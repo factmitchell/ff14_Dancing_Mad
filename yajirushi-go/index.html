@@ -49,17 +49,26 @@ h1{
     overflow:hidden;
 }
 
+#field::before{
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("image_empty.png") center/contain no-repeat;
+    opacity: 0.12;
+    pointer-events: none;
+}
+
 #field::after{
     content: "";
     position: absolute;
     inset: 0;
-    background: url("image.png") center/contain no-repeat;
+    background: url("image_correct.png") center/contain no-repeat;
     opacity: 0;
     transition: opacity 0.3s ease;
     pointer-events: none;
 }
 
-#field.show-background::after{
+#field.show-correct::after{
     opacity: 0.18;
 }
 
@@ -105,7 +114,7 @@ button:hover{
 
 <label style="display:block; margin:15px auto; max-width:900px; color:#fff; font-size:18px;">
     <input id="alwaysShowImage" type="checkbox" style="margin-right:10px;">
-    画像を常に背景に表示する
+    正解画像を表示します
 </label>
 
 <button id="retry">やり直し</button>
@@ -232,29 +241,24 @@ const message =
 const alwaysShowImage =
     document.getElementById("alwaysShowImage");
 
-function updateBackgroundVisibility(){
-    if(alwaysShowImage.checked){
-        field.classList.add("show-background");
-    } else {
-        field.classList.remove("show-background");
-    }
-}
-
 function showResultImage(){
-    if(!field.classList.contains("show-background")){
-        field.classList.add("show-background");
-    }
+    field.classList.add("show-correct");
+
     if(alwaysShowImage.checked){
-        message.textContent = "画像を常に背景に表示しています";
+        message.textContent = "正解画像を表示します";
     } else {
-        message.textContent = "out!";
+        message.textContent = "image_correct.png を表示しました";
+        setTimeout(()=>{
+            if(!alwaysShowImage.checked){
+                field.classList.remove("show-correct");
+                message.textContent = "クリックで矢印を配置";
+            }
+        }, 2000);
     }
 }
 
 function hideResultImage(){
-    if(!alwaysShowImage.checked){
-        field.classList.remove("show-background");
-    }
+    field.classList.remove("show-correct");
 }
 
 function resetGame(){
@@ -262,15 +266,23 @@ function resetGame(){
     nextRole = 0;
     initRoles();
     drawRoles();
-    updateBackgroundVisibility();
-    message.textContent = alwaysShowImage.checked ? "画像を常に背景に表示します" : "クリックで矢印を配置";
+    if(alwaysShowImage.checked){
+        field.classList.add("show-correct");
+    } else {
+        hideResultImage();
+    }
+    message.textContent = alwaysShowImage.checked ? "正解画像を表示します" : "クリックで矢印を配置";
 }
 
 retryButton.addEventListener("click", resetGame);
 
 alwaysShowImage.addEventListener("change", ()=>{
-    updateBackgroundVisibility();
-    message.textContent = alwaysShowImage.checked ? "画像を常に背景に表示します" : "クリックで矢印を配置";
+    if(alwaysShowImage.checked){
+        field.classList.add("show-correct");
+    } else {
+        field.classList.remove("show-correct");
+    }
+    message.textContent = alwaysShowImage.checked ? "正解画像を表示します" : "クリックで矢印を配置";
 });
 
 field.addEventListener("click",(e)=>{
