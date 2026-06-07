@@ -133,6 +133,12 @@
 
         let players = clonePlayers(initialPlayerState);
         const pairGroups = [['MT', 'H1'], ['ST', 'H2'], ['D1', 'D3'], ['D2', 'D4']];
+        const pairColors = ['#ff7f50', '#7fffd4', '#ffd700', '#9370db'];
+
+        function getPairColor(id) {
+            const pairIndex = pairGroups.findIndex(pair => pair.includes(id));
+            return pairColors[pairIndex] || '#ffffff';
+        }
 
         function clonePlayers(source) {
             return source.map(player => JSON.parse(JSON.stringify(player)));
@@ -208,8 +214,11 @@
                 ctx.arc(player.x, player.y, 16, 0, Math.PI * 2);
                 ctx.fillStyle = player.color;
                 ctx.fill();
+                ctx.strokeStyle = getPairColor(player.id);
+                ctx.lineWidth = 4;
+                ctx.stroke();
                 ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1.5;
                 ctx.stroke();
 
                 ctx.fillStyle = '#fff';
@@ -593,7 +602,8 @@
             html += `<div>フェーズ: ${currentPhase === 'init' ? '初期' : currentPhase === 'odd' ? '奇数回' : '偶数回'}</div>`;
             html += '<div style="margin-top: 8px;">';
             players.forEach(player => {
-                html += `${player.id}(${player.role}) : ${player.debuff.group || '未割当'} / ${player.debuff.number || '-'} / ${player.debuff.mechanic || player.type}<br>`;
+                const color = getPairColor(player.id);
+                html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>(${player.role}) : ${player.debuff.group || '未割当'} / ${player.debuff.number || '-'} / ${player.debuff.mechanic || player.type}<br>`;
             });
             html += '</div>';
             statePanel.innerHTML = html;
@@ -604,9 +614,10 @@
             const coordsPanel = document.getElementById('coordsPanel');
             let html = '<strong>座標一覧</strong><br>';
             players.forEach(player => {
-                html += `${player.id}: x=${Math.round(player.x)}, y=${Math.round(player.y)}\n`;
+                const color = getPairColor(player.id);
+                html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>: x=${Math.round(player.x)}, y=${Math.round(player.y)}<br>`;
             });
-            coordsPanel.textContent = html;
+            coordsPanel.innerHTML = html;
         }
 
         function updateLog(text) {
