@@ -44,6 +44,23 @@
         button.active {
             background: #00bcd4;
         }
+        #sizeControl {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #222;
+            padding: 8px 10px;
+            border-radius: 8px;
+            color: #fff;
+        }
+        #sizeControl label {
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        #sizeControl input[type="range"] {
+            width: 180px;
+        }
         #canvas-container {
             position: relative;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -80,6 +97,11 @@
         <button id="btn-reset">リセット</button>
     </div>
 
+    <div id="sizeControl">
+        <label for="fieldSizeSlider">フィールドサイズ: <span id="sizeLabel">600</span> px</label>
+        <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="600">
+    </div>
+
     <div id="canvas-container">
         <canvas id="fieldCanvas" width="600" height="600"></canvas>
     </div>
@@ -99,16 +121,44 @@
     <script>
         const canvas = document.getElementById('fieldCanvas');
         const ctx = canvas.getContext('2d');
-        const cssSize = 600;
+        const BASE_CANVAS_SIZE = 600;
+        let cssSize = BASE_CANVAS_SIZE;
         const dpr = window.devicePixelRatio || 1;
-        canvas.style.width = `${cssSize}px`;
-        canvas.style.height = `${cssSize}px`;
-        canvas.width = cssSize * dpr;
-        canvas.height = cssSize * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const centerX = cssSize / 2;
-        const centerY = cssSize / 2;
-        const radius = cssSize / 2 - 20;
+        let centerX;
+        let centerY;
+        let radius;
+
+        function getScaleFactor() {
+            return cssSize / BASE_CANVAS_SIZE;
+        }
+
+        function s(value) {
+            return value * getScaleFactor();
+        }
+
+        function scaledFont(px, weight = '') {
+            const size = Math.max(8, Math.round(s(px)));
+            return `${weight ? weight + ' ' : ''}${size}px Arial`;
+        }
+
+        function updateCanvasSize(size) {
+            const scale = size / cssSize;
+            if (cssSize !== size) {
+                players.forEach(player => {
+                    player.x *= scale;
+                    player.y *= scale;
+                });
+            }
+            cssSize = size;
+            canvas.style.width = `${cssSize}px`;
+            canvas.style.height = `${cssSize}px`;
+            canvas.width = cssSize * dpr;
+            canvas.height = cssSize * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            centerX = cssSize / 2;
+            centerY = cssSize / 2;
+            radius = cssSize / 2 - s(20);
+        }
 
         let currentPhase = 'init';
         let draggedPlayer = null;
@@ -138,7 +188,8 @@
             createPlayer('D4', 'DPS', 390, 380, '#dc143c')
         ];
 
-        let players = clonePlayers(initialPlayerState);
+        let players = clonePlayers(initialPlayerState, getScaleFactor());
+        updateCanvasSize(cssSize);
         const pairGroups = [['MT', 'H1'], ['ST', 'H2'], ['D1', 'D3'], ['D2', 'D4']];
         const pairColors = ['#ff7f50', '#7fffd4', '#ffd700', '#9370db'];
         const roleIcons = {
@@ -172,8 +223,13 @@
             return '';
         }
 
-        function clonePlayers(source) {
-            return source.map(player => JSON.parse(JSON.stringify(player)));
+        function clonePlayers(source, scale = 1) {
+            return source.map(player => {
+                const clone = JSON.parse(JSON.stringify(player));
+                clone.x *= scale;
+                clone.y *= scale;
+                return clone;
+            });
         }
 
         function getPlayerPriority(player) {
@@ -199,40 +255,40 @@
 
         function getPhaseTowers() {
             return [
-                { id: 'tower1', type: '円', position: { x: centerX - 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '塔(左)', color: 'rgba(0, 150, 255, 0.4)' },
-                { id: 'tower2', type: '円', position: { x: centerX + 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '塔(右)', color: 'rgba(255, 50, 50, 0.4)' }
+                { id: 'tower1', type: '円', position: { x: centerX - s(80), y: centerY + s(100) }, radius: s(45), required_players: 1, label: '塔(左)', color: 'rgba(0, 150, 255, 0.4)' },
+                { id: 'tower2', type: '円', position: { x: centerX + s(80), y: centerY + s(100) }, radius: s(45), required_players: 1, label: '塔(右)', color: 'rgba(255, 50, 50, 0.4)' }
             ];
         }
 
         function drawField() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, cssSize, cssSize);
 
             ctx.beginPath();
             ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
             ctx.fillStyle = '#222';
             ctx.fill();
             ctx.strokeStyle = '#555';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = s(3);
             ctx.stroke();
 
             ctx.strokeStyle = '#333';
-            ctx.lineWidth = 1;
-            for (let r = 50; r < radius; r += 60) {
+            ctx.lineWidth = s(1);
+            for (let r = s(50); r < radius; r += s(60)) {
                 ctx.beginPath();
                 ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
                 ctx.stroke();
             }
-            ctx.beginPath(); ctx.moveTo(centerX, 20); ctx.lineTo(centerX, canvas.height - 20); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(20, centerY); ctx.lineTo(canvas.width - 20, centerY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(centerX, s(20)); ctx.lineTo(centerX, cssSize - s(20)); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(s(20), centerY); ctx.lineTo(cssSize - s(20), centerY); ctx.stroke();
 
             ctx.fillStyle = '#aaa';
-            ctx.font = '16px Arial';
+            ctx.font = scaledFont(16);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('A', centerX, 35);
-            ctx.fillText('B', canvas.width - 35, centerY);
-            ctx.fillText('C', centerX, canvas.height - 35);
-            ctx.fillText('D', 35, centerY);
+            ctx.fillText('A', centerX, s(35));
+            ctx.fillText('B', cssSize - s(35), centerY);
+            ctx.fillText('C', centerX, cssSize - s(35));
+            ctx.fillText('D', s(35), centerY);
 
             drawGimmickGuides();
             drawEffects(getPhaseEffects());
@@ -240,43 +296,45 @@
 
             players.forEach(player => {
                 ctx.beginPath();
-                ctx.arc(player.x, player.y, 18, 0, Math.PI * 2);
+                ctx.arc(player.x, player.y, s(18), 0, Math.PI * 2);
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
                 ctx.fill();
                 ctx.strokeStyle = getPairColor(player.id);
-                ctx.lineWidth = 4;
+                ctx.lineWidth = s(4);
                 ctx.stroke();
                 ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 1.5;
+                ctx.lineWidth = s(1.5);
                 ctx.stroke();
 
+                const iconSize = s(24);
+                const iconOffset = s(12);
                 const icon = roleIcons[player.role];
                 if (icon.complete && icon.naturalWidth) {
-                    ctx.drawImage(icon, player.x - 12, player.y - 12, 24, 24);
+                    ctx.drawImage(icon, player.x - iconOffset, player.y - iconOffset, iconSize, iconSize);
                 } else {
                     ctx.fillStyle = player.color;
                     ctx.beginPath();
-                    ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
+                    ctx.arc(player.x, player.y, s(10), 0, Math.PI * 2);
                     ctx.fill();
                 }
 
                 const emoji = getMechanicEmoji(player.debuff.mechanic || player.type);
                 if (emoji) {
                     ctx.fillStyle = '#fff';
-                    ctx.font = '14px Arial';
+                    ctx.font = scaledFont(14);
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(emoji, player.x, player.y - 22);
+                    ctx.fillText(emoji, player.x, player.y - s(22));
                 }
 
                 const labelText = player.id;
-                const labelY = player.y + 30;
-                ctx.font = 'bold 10px Arial';
+                const labelY = player.y + s(30);
+                ctx.font = scaledFont(10, 'bold');
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                const labelWidth = ctx.measureText(labelText).width + 10;
+                const labelWidth = ctx.measureText(labelText).width + s(10);
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-                ctx.fillRect(player.x - labelWidth / 2, labelY - 8, labelWidth, 16);
+                ctx.fillRect(player.x - labelWidth / 2, labelY - s(8), labelWidth, s(16));
                 ctx.fillStyle = '#fff';
                 ctx.fillText(labelText, player.x, labelY);
             });
@@ -295,10 +353,10 @@
             ctx.fillStyle = color;
             ctx.fill();
             ctx.strokeStyle = '#ffd700';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = s(1.5);
             ctx.stroke();
             ctx.fillStyle = '#fff';
-            ctx.font = '10px Arial';
+            ctx.font = scaledFont(10);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(label, x, y);
@@ -341,17 +399,18 @@
 
         function drawEffects(effects) {
             effects.forEach((effect, index) => {
+                const radius = s(effect.radius);
                 if (effect.type === 'HEAD' || effect.type === 'CIRCLE') {
                     ctx.beginPath();
-                    ctx.arc(effect.source.x, effect.source.y, effect.radius, 0, Math.PI * 2);
+                    ctx.arc(effect.source.x, effect.source.y, radius, 0, Math.PI * 2);
                     ctx.fillStyle = effect.type === 'HEAD' ? 'rgba(255, 100, 100, 0.25)' : 'rgba(100, 150, 255, 0.25)';
                     ctx.fill();
                     ctx.strokeStyle = effect.type === 'HEAD' ? 'rgba(255, 100, 100, 0.8)' : 'rgba(100, 150, 255, 0.8)';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = s(2);
                     ctx.stroke();
                     ctx.fillStyle = '#fff';
-                    ctx.font = '10px Arial';
-                    ctx.fillText(effect.label, effect.source.x, effect.source.y - effect.radius - 10);
+                    ctx.font = scaledFont(10);
+                    ctx.fillText(effect.label, effect.source.x, effect.source.y - radius - s(10));
                 }
                 if (effect.type === 'FAN' && effect.target) {
                     const dx = effect.target.x - effect.source.x;
@@ -360,19 +419,19 @@
                     const half = effect.angle / 2;
                     ctx.beginPath();
                     ctx.moveTo(effect.source.x, effect.source.y);
-                    ctx.lineTo(effect.source.x + Math.cos(baseAngle - half) * effect.radius, effect.source.y + Math.sin(baseAngle - half) * effect.radius);
-                    ctx.arc(effect.source.x, effect.source.y, effect.radius, baseAngle - half, baseAngle + half);
+                    ctx.lineTo(effect.source.x + Math.cos(baseAngle - half) * radius, effect.source.y + Math.sin(baseAngle - half) * radius);
+                    ctx.arc(effect.source.x, effect.source.y, radius, baseAngle - half, baseAngle + half);
                     ctx.closePath();
                     ctx.fillStyle = 'rgba(255, 200, 0, 0.2)';
                     ctx.fill();
                     ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = s(2);
                     ctx.stroke();
                     ctx.fillStyle = '#fff';
-                    ctx.font = '10px Arial';
-                    ctx.fillText(effect.label, effect.source.x, effect.source.y - 10);
+                    ctx.font = scaledFont(10);
+                    ctx.fillText(effect.label, effect.source.x, effect.source.y - s(10));
                     ctx.beginPath();
-                    ctx.arc(effect.target.x, effect.target.y, 5, 0, Math.PI * 2);
+                    ctx.arc(effect.target.x, effect.target.y, s(5), 0, Math.PI * 2);
                     ctx.fillStyle = '#fff';
                     ctx.fill();
                 }
@@ -388,7 +447,7 @@
             const pos = getMousePos(e);
             players.forEach(player => {
                 const dist = Math.hypot(player.x - pos.x, player.y - pos.y);
-                if (dist < 16) {
+                if (dist < s(16)) {
                     draggedPlayer = player;
                 }
             });
@@ -432,7 +491,7 @@
         });
 
         function resetSimulation() {
-            players = clonePlayers(initialPlayerState);
+            players = clonePlayers(initialPlayerState, getScaleFactor());
             players.forEach(player => {
                 player.debuff = { group: '', number: null, mechanic: '' };
                 player.type = '無職';
@@ -446,7 +505,7 @@
         }
 
         function generateDebuff() {
-            players = clonePlayers(initialPlayerState);
+            players = clonePlayers(initialPlayerState, getScaleFactor());
 
             const thPlayers = players.filter(p => p.role === 'TANK' || p.role === 'HEALER');
             const dpsPlayers = players.filter(p => p.role === 'DPS');
@@ -541,12 +600,12 @@
                 towerPlayers.forEach((player, index) => {
                     const tower = towers[index % towers.length];
                     const angle = index % 2 === 0 ? Math.PI / 4 : -Math.PI / 4;
-                    player.x = tower.position.x + Math.cos(angle) * 24;
-                    player.y = tower.position.y + Math.sin(angle) * 24;
+                    player.x = tower.position.x + Math.cos(angle) * s(24);
+                    player.y = tower.position.y + Math.sin(angle) * s(24);
                 });
                 const assigned = getHorizontalAssignment(idlePlayers);
-                const leftTargets = [{ x: centerX - 140, y: centerY - 110 }, { x: centerX - 100, y: centerY - 140 }];
-                const rightTargets = [{ x: centerX + 140, y: centerY - 110 }, { x: centerX + 100, y: centerY - 140 }];
+                const leftTargets = [{ x: centerX - s(140), y: centerY - s(110) }, { x: centerX - s(100), y: centerY - s(140) }];
+                const rightTargets = [{ x: centerX + s(140), y: centerY - s(110) }, { x: centerX + s(100), y: centerY - s(140) }];
                 assigned.left.forEach((player, idx) => {
                     player.x = leftTargets[idx].x;
                     player.y = leftTargets[idx].y;
@@ -559,12 +618,12 @@
                 towerPlayers.forEach((player, index) => {
                     const tower = towers[index % towers.length];
                     const angle = index % 2 === 0 ? Math.PI / 6 : -Math.PI / 6;
-                    player.x = tower.position.x + Math.cos(angle) * 22;
-                    player.y = tower.position.y + Math.sin(angle) * 22;
+                    player.x = tower.position.x + Math.cos(angle) * s(22);
+                    player.y = tower.position.y + Math.sin(angle) * s(22);
                 });
                 const assigned = getHorizontalAssignment(idlePlayers);
-                const leftTargets = [{ x: centerX - 180, y: centerY + 20 }, { x: centerX - 140, y: centerY - 30 }];
-                const rightTargets = [{ x: centerX + 180, y: centerY + 20 }, { x: centerX + 140, y: centerY - 30 }];
+                const leftTargets = [{ x: centerX - s(180), y: centerY + s(20) }, { x: centerX - s(140), y: centerY - s(30) }];
+                const rightTargets = [{ x: centerX + s(180), y: centerY + s(20) }, { x: centerX + s(140), y: centerY - s(30) }];
                 assigned.left.forEach((player, idx) => {
                     player.x = leftTargets[idx].x;
                     player.y = leftTargets[idx].y;
@@ -705,6 +764,15 @@
         document.getElementById('btn-align').addEventListener('click', autoAlign);
         document.getElementById('btn-check').addEventListener('click', checkGimmickSuccess);
         document.getElementById('btn-reset').addEventListener('click', resetSimulation);
+
+        const fieldSizeSlider = document.getElementById('fieldSizeSlider');
+        const sizeLabel = document.getElementById('sizeLabel');
+        fieldSizeSlider.addEventListener('input', e => {
+            const newSize = Number(e.target.value);
+            sizeLabel.textContent = newSize;
+            updateCanvasSize(newSize);
+            drawField();
+        });
 
         resetSimulation();
         drawField();
