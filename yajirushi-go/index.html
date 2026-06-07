@@ -59,6 +59,21 @@ h1{
     margin-top:20px;
     font-size:24px;
 }
+
+button{
+    margin-top:10px;
+    padding:10px 20px;
+    font-size:18px;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    background:#fff;
+    color:#222;
+}
+
+button:hover{
+    background:#ddd;
+}
 </style>
 </head>
 <body>
@@ -72,6 +87,8 @@ h1{
 <div id="message">
 クリックで矢印を配置
 </div>
+
+<button id="retry">やり直し</button>
 
 <script>
 
@@ -102,18 +119,25 @@ function randomArrowPair(){
 
 /* 固定秒数 */
 
-const [arrow1, arrow2] = randomArrowPair();
+const roles = [];
 
-const roles = [
-    {
-        arrow: arrow1,
-        time: 3
-    },
-    {
-        arrow: arrow2,
-        time: 5
-    }
-];
+function initRoles(){
+    const [arrow1, arrow2] = randomArrowPair();
+
+    roles.length = 0;
+    roles.push(
+        {
+            arrow: arrow1,
+            time: 3
+        },
+        {
+            arrow: arrow2,
+            time: 5
+        }
+    );
+}
+
+initRoles();
 
 const rolesDiv =
     document.getElementById("roles");
@@ -169,6 +193,22 @@ let nextRole = 0;
 
 const field =
     document.getElementById("field");
+
+const retryButton =
+    document.getElementById("retry");
+
+const message =
+    document.getElementById("message");
+
+function resetGame(){
+    field.querySelectorAll(".marker").forEach(marker=>marker.remove());
+    nextRole = 0;
+    initRoles();
+    drawRoles();
+    message.textContent = "クリックで矢印を配置";
+}
+
+retryButton.addEventListener("click", resetGame);
 
 field.addEventListener("click",(e)=>{
 
