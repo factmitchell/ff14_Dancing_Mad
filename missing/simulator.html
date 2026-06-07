@@ -99,9 +99,16 @@
     <script>
         const canvas = document.getElementById('fieldCanvas');
         const ctx = canvas.getContext('2d');
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        const radius = canvas.width / 2 - 20;
+        const cssSize = 600;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.style.width = `${cssSize}px`;
+        canvas.style.height = `${cssSize}px`;
+        canvas.width = cssSize * dpr;
+        canvas.height = cssSize * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const centerX = cssSize / 2;
+        const centerY = cssSize / 2;
+        const radius = cssSize / 2 - 20;
 
         let currentPhase = 'init';
         let draggedPlayer = null;
