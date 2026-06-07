@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2ミッシング塔 処理シミュレーター</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1e1e24;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #ff4a4a;
+        }
+        #controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            background: #2a2a35;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        button {
+            background: #444454;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #55556c;
+        }
+        button.active {
+            background: #00bcd4;
+        }
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 50%;
+            overflow: hidden;
+            background: #111;
+        }
+        canvas {
+            display: block;
+        }
+        #info-panel {
+            margin-top: 15px;
+            max-width: 600px;
+            background: #2a2a35;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .highlight { color: #ffd700; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>P2ミッシング塔 処理シミュレーター (ベース版)</h1>
+
+    <div id="controls">
+        <button id="btn-init" class="active">初期配置</button>
+        <button id="btn-odd">奇数回</button>
+        <button id="btn-even">偶数回</button>
+        <button id="btn-generate">デバフ生成</button>
+        <button id="btn-align">自動整列</button>
+        <button id="btn-check">答え合わせ</button>
+        <button id="btn-reset">リセット</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="fieldCanvas" width="600" height="600"></canvas>
+    </div>
+
+    <div id="info-panel">
+        <strong>【簡易操作マニュアル】</strong><br>
+        * マウスやタップで各ジョブのマーカーを<span class="highlight">ドラッグ＆ドロップ</span>して移動できます。<br>
+        * 「デバフ生成」で先組/後組を含む状態が作成されます。<br>
+        * 「自動整列」で優先度に基づいた左右配置を表示します。<br>
+        * 「答え合わせ」で塔の判定および無職組の左右分割を簡易判定します。
+    </div>
+
+    <div id="statePanel" style="margin-top: 12px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;"></div>
+    <div id="logPanel" style="margin-top: 10px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;"></div>
+
+    <script>
+        const canvas = document.getElementById('fieldCanvas');
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = canvas.width / 2 - 20;
+
+        let currentPhase = 'init';
+        let draggedPlayer = null;
+
+        function createPlayer(id, role, x, y, color) {
+            return {
+                id,
+                role,
+                x,
+                y,
+                color,
+                debuff: { group: '', number: null, mechanic: '' },
+                type: '無職',
+                order: null,
+                current_turn_active: false
+            };
+        }
+
+        const initialPlayerState = [
+            createPlayer('MT', 'TANK', 260, 260, '#4169e1'),
+            createPlayer('ST', 'TANK', 340, 260, '#4169e1'),
+            createPlayer('H1', 'HEALER', 220, 300, '#32cd32'),
+            createPlayer('H2', 'HEALER', 380, 300, '#32cd32'),
+            createPlayer('D1', 'DPS', 250, 340, '#dc143c'),
+            createPlayer('D2', 'DPS', 350, 340, '#dc143c'),
+            createPlayer('D3', 'DPS', 210, 380, '#dc143c'),
+            createPlayer('D4', 'DPS', 390, 380, '#dc143c')
+        ];
+
+        let players = clonePlayers(initialPlayerState);
+        const pairGroups = [['MT', 'ST'], ['H1', 'H2'], ['D1', 'D2'], ['D3', 'D4']];
+
+        function clonePlayers(source) {
+            return source.map(player => JSON.parse(JSON.stringify(player)));
+        }
+
+        function getPlayerPriority(player) {
+            if (player.role === 'TANK') return 100;
+            if (player.role === 'HEALER') return 80;
+            if (player.id === 'D1') return 65;
+            if (player.id === 'D2') return 60;
+            if (player.id === 'D3') return 55;
+            if (player.id === 'D4') return 50;
+            return 0;
+        }
+
+        function sortByPriority(list) {
+            return [...list].sort((a, b) => getPlayerPriority(b) - getPlayerPriority(a));
+        }
+
+        function shuffle(array) {
+            return array
+                .map(value => ({ value, sort: Math.random() }))
+                .sort((a, b) => a.sort - b.sort)
+                .map(({ value }) => value);
+        }
+
+        function getPhaseTowers() {
+            if (currentPhase === 'odd') {
+                return [
+                    { id: 'tower1', type: '円', position: { x: centerX - 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '青サークル', color: 'rgba(0, 150, 255, 0.4)' },
+                    { id: 'tower2', type: '円', position: { x: centerX + 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '赤サークル', color: 'rgba(255, 50, 50, 0.4)' }
+                ];
+            }
+            if (currentPhase === 'even') {
+                return [
+                    { id: 'tower3', type: '扇', position: { x: centerX - 100, y: centerY + 50 }, radius: 40, required_players: 1, label: '塔(西)', color: 'rgba(255, 215, 0, 0.4)' },
+                    { id: 'tower4', type: '扇', position: { x: centerX + 100, y: centerY + 50 }, radius: 40, required_players: 1, label: '塔(東)', color: 'rgba(255, 215, 0, 0.4)' }
+                ];
+            }
+            return [];
+        }
+
+        function drawField() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#222';
+            ctx.fill();
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            for (let r = 50; r < radius; r += 60) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.beginPath(); ctx.moveTo(centerX, 20); ctx.lineTo(centerX, canvas.height - 20); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(20, centerY); ctx.lineTo(canvas.width - 20, centerY); ctx.stroke();
+
+            ctx.fillStyle = '#aaa';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('A', centerX, 35);
+            ctx.fillText('B', canvas.width - 35, centerY);
+            ctx.fillText('C', centerX, canvas.height - 35);
+            ctx.fillText('D', 35, centerY);
+
+            drawGimmickGuides();
+            drawEffects(getPhaseEffects());
+
+            players.forEach(player => {
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, 16, 0, Math.PI * 2);
+                ctx.fillStyle = player.color;
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(player.id, player.x, player.y);
+            });
+        }
+
+        function drawGimmickGuides() {
+            const towers = getPhaseTowers();
+            towers.forEach(tower => {
+                drawTower(tower.position.x, tower.position.y, tower.radius, tower.color, tower.label);
+            });
+
+            if (currentPhase === 'odd') {
+                ctx.fillStyle = 'rgba(255, 165, 0, 0.2)';
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, -Math.PI / 4 - Math.PI / 2, Math.PI / 4 - Math.PI / 2);
+                ctx.fill();
+            } else if (currentPhase === 'even') {
+                ctx.fillStyle = 'rgba(139, 69, 19, 0.4)';
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, 0, Math.PI);
+                ctx.fill();
+            }
+        }
+
+        function drawTower(x, y, r, color, label) {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, x, y);
+        }
+
+        function getPhaseEffects() {
+            if (currentPhase === 'init') return [];
+            const headPlayers = players.filter(p => p.debuff.mechanic === '頭割り').sort((a, b) => a.order - b.order);
+            const circlePlayers = players.filter(p => p.debuff.mechanic === '円AoE').sort((a, b) => a.order - b.order);
+            const fanPlayers = players.filter(p => p.debuff.mechanic === '扇AoE').sort((a, b) => a.order - b.order);
+            const effects = [];
+
+            if (currentPhase === 'odd') {
+                if (headPlayers[0]) effects.push({ type: 'HEAD', source: headPlayers[0], radius: 40, label: '頭割り1' });
+                if (headPlayers[1]) effects.push({ type: 'HEAD', source: headPlayers[1], radius: 40, label: '頭割り2' });
+                if (fanPlayers[0]) effects.push({ type: 'FAN', source: fanPlayers[0], target: nearestPlayer(fanPlayers[0]), radius: 90, angle: Math.PI / 3, label: '扇AoE' });
+                if (circlePlayers[0]) effects.push({ type: 'CIRCLE', source: circlePlayers[0], radius: 45, label: '円AoE' });
+            } else if (currentPhase === 'even') {
+                if (fanPlayers[0]) effects.push({ type: 'FAN', source: fanPlayers[0], target: nearestPlayer(fanPlayers[0]), radius: 90, angle: Math.PI / 3, label: '扇AoE1' });
+                if (fanPlayers[1]) effects.push({ type: 'FAN', source: fanPlayers[1], target: nearestPlayer(fanPlayers[1]), radius: 90, angle: Math.PI / 3, label: '扇AoE2' });
+                if (circlePlayers[0]) effects.push({ type: 'CIRCLE', source: circlePlayers[0], radius: 45, label: '円AoE1' });
+                if (circlePlayers[1]) effects.push({ type: 'CIRCLE', source: circlePlayers[1], radius: 45, label: '円AoE2' });
+            }
+            return effects;
+        }
+
+        function nearestPlayer(source) {
+            let nearest = null;
+            let minDist = Infinity;
+            players.forEach(target => {
+                if (target.id === source.id) return;
+                const dist = Math.hypot(target.x - source.x, target.y - source.y);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = target;
+                }
+            });
+            return nearest || source;
+        }
+
+        function drawEffects(effects) {
+            effects.forEach((effect, index) => {
+                if (effect.type === 'HEAD' || effect.type === 'CIRCLE') {
+                    ctx.beginPath();
+                    ctx.arc(effect.source.x, effect.source.y, effect.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = effect.type === 'HEAD' ? 'rgba(255, 100, 100, 0.25)' : 'rgba(100, 150, 255, 0.25)';
+                    ctx.fill();
+                    ctx.strokeStyle = effect.type === 'HEAD' ? 'rgba(255, 100, 100, 0.8)' : 'rgba(100, 150, 255, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '10px Arial';
+                    ctx.fillText(effect.label, effect.source.x, effect.source.y - effect.radius - 10);
+                }
+                if (effect.type === 'FAN' && effect.target) {
+                    const dx = effect.target.x - effect.source.x;
+                    const dy = effect.target.y - effect.source.y;
+                    const baseAngle = Math.atan2(dy, dx);
+                    const half = effect.angle / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(effect.source.x, effect.source.y);
+                    ctx.lineTo(effect.source.x + Math.cos(baseAngle - half) * effect.radius, effect.source.y + Math.sin(baseAngle - half) * effect.radius);
+                    ctx.arc(effect.source.x, effect.source.y, effect.radius, baseAngle - half, baseAngle + half);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(255, 200, 0, 0.2)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '10px Arial';
+                    ctx.fillText(effect.label, effect.source.x, effect.source.y - 10);
+                    ctx.beginPath();
+                    ctx.arc(effect.target.x, effect.target.y, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#fff';
+                    ctx.fill();
+                }
+            });
+        }
+
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            const pos = getMousePos(e);
+            players.forEach(player => {
+                const dist = Math.hypot(player.x - pos.x, player.y - pos.y);
+                if (dist < 16) {
+                    draggedPlayer = player;
+                }
+            });
+        });
+
+        canvas.addEventListener('mousemove', e => {
+            if (draggedPlayer) {
+                const pos = getMousePos(e);
+                const distFromCenter = Math.hypot(pos.x - centerX, pos.y - centerY);
+                if (distFromCenter < radius) {
+                    draggedPlayer.x = pos.x;
+                    draggedPlayer.y = pos.y;
+                }
+                drawField();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            draggedPlayer = null;
+        });
+
+        canvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY });
+                canvas.dispatchEvent(mouseEvent);
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', e => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY });
+                canvas.dispatchEvent(mouseEvent);
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+            const mouseEvent = new MouseEvent('mouseup', {});
+            window.dispatchEvent(mouseEvent);
+        });
+
+        function resetSimulation() {
+            players = clonePlayers(initialPlayerState);
+            players.forEach(player => {
+                player.debuff = { group: '', number: null, mechanic: '' };
+                player.type = '無職';
+                player.order = null;
+                player.current_turn_active = false;
+            });
+            currentPhase = 'init';
+            setPhase('init');
+            updateStatePanel();
+            updateLog('リセットされました。デバフ生成を行ってください。');
+        }
+
+        function generateDebuff() {
+            players = clonePlayers(initialPlayerState);
+            pairGroups.forEach(pair => {
+                const first = Math.random() < 0.5 ? pair[0] : pair[1];
+                const second = first === pair[0] ? pair[1] : pair[0];
+                players.find(p => p.id === first).debuff.group = '先組';
+                players.find(p => p.id === second).debuff.group = '後組';
+            });
+
+            const thPlayers = players.filter(p => p.role === 'TANK' || p.role === 'HEALER');
+            const dpsPlayers = players.filter(p => p.role === 'DPS');
+            const thHead = thPlayers[Math.floor(Math.random() * thPlayers.length)];
+            const dpsHead = dpsPlayers[Math.floor(Math.random() * dpsPlayers.length)];
+            const thUsesCircle = Math.random() < 0.5;
+
+            thPlayers.forEach(player => {
+                if (player.id === thHead.id) {
+                    player.debuff.mechanic = '頭割り';
+                    player.type = '頭割り';
+                    player.current_turn_active = false;
+                } else {
+                    player.debuff.mechanic = thUsesCircle ? '円AoE' : '扇AoE';
+                    player.type = thUsesCircle ? '塔踏み(円)' : '塔踏み(扇)';
+                    player.current_turn_active = true;
+                }
+            });
+
+            dpsPlayers.forEach(player => {
+                if (player.id === dpsHead.id) {
+                    player.debuff.mechanic = '頭割り';
+                    player.type = '頭割り';
+                    player.current_turn_active = false;
+                } else {
+                    player.debuff.mechanic = thUsesCircle ? '扇AoE' : '円AoE';
+                    player.type = thUsesCircle ? '塔踏み(扇)' : '塔踏み(円)';
+                    player.current_turn_active = true;
+                }
+            });
+
+            const orders = shuffle([1, 2, 3, 4, 5, 6, 7, 8]);
+            players.forEach((player, index) => {
+                player.debuff.number = orders[index];
+                player.order = orders[index];
+            });
+
+            updateStatePanel();
+            updateLog('デバフを生成しました。タンヒラとDPSがそれぞれ頭割り1名・他3名は同じAoE種別になります。');
+            drawField();
+        }
+
+        function getHorizontalAssignment(playersList) {
+            const sorted = sortByPriority(playersList);
+            return {
+                left: sorted.slice(0, 2),
+                right: sorted.slice(2, 4)
+            };
+        }
+
+        function autoAlign() {
+            const towerPlayers = players.filter(p => p.type.startsWith('塔踏み'));
+            const idlePlayers = players.filter(p => p.type === '無職');
+            const towers = getPhaseTowers();
+            if (currentPhase === 'odd') {
+                towerPlayers.forEach((player, index) => {
+                    const tower = towers[index % towers.length];
+                    const angle = index % 2 === 0 ? Math.PI / 4 : -Math.PI / 4;
+                    player.x = tower.position.x + Math.cos(angle) * 24;
+                    player.y = tower.position.y + Math.sin(angle) * 24;
+                });
+                const assigned = getHorizontalAssignment(idlePlayers);
+                const leftTargets = [{ x: centerX - 140, y: centerY - 110 }, { x: centerX - 100, y: centerY - 140 }];
+                const rightTargets = [{ x: centerX + 140, y: centerY - 110 }, { x: centerX + 100, y: centerY - 140 }];
+                assigned.left.forEach((player, idx) => {
+                    player.x = leftTargets[idx].x;
+                    player.y = leftTargets[idx].y;
+                });
+                assigned.right.forEach((player, idx) => {
+                    player.x = rightTargets[idx].x;
+                    player.y = rightTargets[idx].y;
+                });
+            } else if (currentPhase === 'even') {
+                towerPlayers.forEach((player, index) => {
+                    const tower = towers[index % towers.length];
+                    const angle = index % 2 === 0 ? Math.PI / 6 : -Math.PI / 6;
+                    player.x = tower.position.x + Math.cos(angle) * 22;
+                    player.y = tower.position.y + Math.sin(angle) * 22;
+                });
+                const assigned = getHorizontalAssignment(idlePlayers);
+                const leftTargets = [{ x: centerX - 180, y: centerY + 20 }, { x: centerX - 140, y: centerY - 30 }];
+                const rightTargets = [{ x: centerX + 180, y: centerY + 20 }, { x: centerX + 140, y: centerY - 30 }];
+                assigned.left.forEach((player, idx) => {
+                    player.x = leftTargets[idx].x;
+                    player.y = leftTargets[idx].y;
+                });
+                assigned.right.forEach((player, idx) => {
+                    player.x = rightTargets[idx].x;
+                    player.y = rightTargets[idx].y;
+                });
+            }
+            updateStatePanel();
+            updateLog('自動整列を適用しました。配置を確認してください。');
+            drawField();
+        }
+
+        function checkGimmickSuccess() {
+            const towers = getPhaseTowers();
+            const messages = [];
+            let ok = true;
+            towers.forEach(tower => {
+                const insidePlayers = players.filter(player => isInside(player, tower.position, tower.radius));
+                if (insidePlayers.length === 0) {
+                    ok = false;
+                    messages.push(`FAIL: ${tower.label} に誰もいません`);
+                } else if (!insidePlayers.every(player => player.current_turn_active)) {
+                    ok = false;
+                    messages.push(`FAIL: ${tower.label} に担当外のプレイヤーがいます (${insidePlayers.map(p => p.id).join(', ')})`);
+                } else {
+                    messages.push(`OK: ${tower.label} に担当プレイヤー ${insidePlayers.map(p => p.id).join(', ')} がいます`);
+                }
+            });
+            if (currentPhase === 'odd') {
+                const idlePlayers = players.filter(p => p.type === '無職');
+                const leftIdle = idlePlayers.filter(p => p.x < centerX);
+                const rightIdle = idlePlayers.filter(p => p.x > centerX);
+                if (leftIdle.length !== 2) {
+                    ok = false;
+                    messages.push('FAIL: 無職組の左側が2人ではありません');
+                }
+                if (rightIdle.length !== 2) {
+                    ok = false;
+                    messages.push('FAIL: 無職組の右側が2人ではありません');
+                }
+            }
+
+            const effects = getPhaseEffects();
+            if (effects.length === 0) {
+                messages.push('INFO: エフェクトは現在のフェーズでは生成されません。');
+            } else {
+                effects.forEach(effect => {
+                    if (effect.type === 'FAN') {
+                        if (!effect.target) {
+                            ok = false;
+                            messages.push(`FAIL: ${effect.label} のターゲットが見つかりません`);
+                        } else {
+                            messages.push(`EFFECT: ${effect.label} を ${effect.source.id} → ${effect.target.id} で生成`);
+                        }
+                    } else {
+                        messages.push(`EFFECT: ${effect.label} を ${effect.source.id} で生成`);
+                    }
+                });
+            }
+
+            if (ok) {
+                messages.unshift('SUCCESS: 判定に成功しました。');
+            } else {
+                messages.unshift('FAIL: 判定に失敗しました。配置を見直してください。');
+            }
+            updateLog(messages.join('\n'));
+        }
+
+        function isInside(point, center, radius) {
+            return Math.hypot(point.x - center.x, point.y - center.y) <= radius;
+        }
+
+        function setPhase(phase) {
+            currentPhase = phase;
+            Object.keys(buttons).forEach(key => {
+                if (key === phase) buttons[key].classList.add('active');
+                else buttons[key].classList.remove('active');
+            });
+            updateStatePanel();
+            drawField();
+        }
+
+        function updateStatePanel() {
+            const statePanel = document.getElementById('statePanel');
+            let html = '<strong>現在の状態</strong><br>';
+            html += `<div>フェーズ: ${currentPhase === 'init' ? '初期' : currentPhase === 'odd' ? '奇数回' : '偶数回'}</div>`;
+            html += '<div style="margin-top: 8px;">';
+            players.forEach(player => {
+                html += `${player.id}(${player.role}) : ${player.debuff.group || '未割当'} / ${player.debuff.number || '-'} / ${player.debuff.mechanic || player.type}<br>`;
+            });
+            html += '</div>';
+            statePanel.innerHTML = html;
+        }
+
+        function updateLog(text) {
+            const logPanel = document.getElementById('logPanel');
+            logPanel.innerHTML = '<strong>判定結果</strong><br>' + text.replace(/\n/g, '<br>');
+        }
+
+        const buttons = {
+            'init': document.getElementById('btn-init'),
+            'odd': document.getElementById('btn-odd'),
+            'even': document.getElementById('btn-even')
+        };
+
+        buttons['init'].addEventListener('click', () => setPhase('init'));
+        buttons['odd'].addEventListener('click', () => setPhase('odd'));
+        buttons['even'].addEventListener('click', () => setPhase('even'));
+        document.getElementById('btn-generate').addEventListener('click', generateDebuff);
+        document.getElementById('btn-align').addEventListener('click', autoAlign);
+        document.getElementById('btn-check').addEventListener('click', checkGimmickSuccess);
+        document.getElementById('btn-reset').addEventListener('click', resetSimulation);
+
+        resetSimulation();
+        drawField();
+    </script>
+</body>
+</html>
