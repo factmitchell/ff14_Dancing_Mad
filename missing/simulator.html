@@ -92,10 +92,14 @@
         <button id="btn-odd">奇数回</button>
         <button id="btn-even">偶数回</button>
         <button id="btn-generate">デバフ生成</button>
+        <button id="btn-prev-hit">前の塔</button>
+        <button id="btn-next-hit">次の塔</button>
         <button id="btn-align">自動整列</button>
         <button id="btn-check">答え合わせ</button>
         <button id="btn-reset">リセット</button>
     </div>
+
+    <div id="towerStatus" style="margin-top: 8px; max-width: 600px; background: #222; padding: 10px; border-radius: 8px; font-size: 13px; color: #fff;">塔着弾: 0 / 8</div>
 
     <div id="sizeControl">
         <label for="fieldSizeSlider">フィールドサイズ: <span id="sizeLabel">750</span> px</label>
@@ -110,6 +114,7 @@
         <strong>【簡易操作マニュアル】</strong><br>
         * マウスやタップで各ジョブのマーカーを<span class="highlight">ドラッグ＆ドロップ</span>して移動できます。<br>
         * 「デバフ生成」で先組/後組を含む状態が作成されます。<br>
+        * 「前の塔」「次の塔」で塔着弾を進め、現在の担当グループのみデバフを表示します。<br>
         * 「自動整列」で優先度に基づいた左右配置を表示します。<br>
         * 「答え合わせ」で塔の判定および無職組の左右分割を簡易判定します。
     </div>
@@ -162,6 +167,25 @@
 
         let currentPhase = 'init';
         let draggedPlayer = null;
+        let currentTowerHit = 0;
+        const towerHitGroups = ['先組', '先組', '先組', '後組', '後組', '後組', '後組', '先組'];
+        let towerDebuffAssignments = {
+            '先組': {},
+            '後組': {}
+        };
+
+        function getTowerGroupByHit(hit) {
+            return towerHitGroups[hit - 1] || null;
+        }
+
+        function getGroupHitOrdinal(group, hit) {
+            if (!group || hit < 1) return 0;
+            return towerHitGroups.slice(0, hit).filter(g => g === group).length;
+        }
+
+        function getPlayersByGroup(group) {
+            return players.filter(player => player.debuff.group === group);
+        }
 
         function createPlayer(id, role, x, y, color) {
             return {
@@ -291,6 +315,7 @@
             ctx.fillText('D', s(35), centerY);
 
             drawGimmickGuides();
+            drawTowerEffects(getTowerEffects());
             drawEffects(getPhaseEffects());
             updateCoordsPanel();
 
@@ -344,6 +369,50 @@
             const towers = getPhaseTowers();
             towers.forEach(tower => {
                 drawTower(tower.position.x, tower.position.y, tower.radius, tower.color, tower.label);
+            });
+        }
+
+        function getTowerEffects() {
+            const activeGroup = getTowerGroupByHit(currentTowerHit);
+            return players
+                .filter(player => player.debuff.mechanic && player.debuff.group === activeGroup)
+                .map(player => ({
+                    type: player.debuff.mechanic,
+                    source: player,
+                    target: player.debuff.mechanic === '扇AoE' ? nearestPlayer(player) : null,
+                    radius: player.debuff.mechanic === '円AoE' ? 45 : player.debuff.mechanic === '扇AoE' ? 90 : 50,
+                    label: player.debuff.mechanic
+                }));
+        }
+
+        function drawTowerEffects(effects) {
+            effects.forEach(effect => {
+                const radius = s(effect.radius);
+                if (effect.type === '頭割り' || effect.type === '円AoE') {
+                    ctx.beginPath();
+                    ctx.arc(effect.source.x, effect.source.y, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = effect.type === '頭割り' ? 'rgba(255, 100, 100, 0.25)' : 'rgba(100, 150, 255, 0.25)';
+                    ctx.fill();
+                    ctx.strokeStyle = effect.type === '頭割り' ? 'rgba(255, 100, 100, 0.8)' : 'rgba(100, 150, 255, 0.8)';
+                    ctx.lineWidth = s(2);
+                    ctx.stroke();
+                }
+                if (effect.type === '扇AoE' && effect.target) {
+                    const dx = effect.target.x - effect.source.x;
+                    const dy = effect.target.y - effect.source.y;
+                    const baseAngle = Math.atan2(dy, dx);
+                    const half = Math.PI / 6;
+                    ctx.beginPath();
+                    ctx.moveTo(effect.source.x, effect.source.y);
+                    ctx.lineTo(effect.source.x + Math.cos(baseAngle - half) * radius, effect.source.y + Math.sin(baseAngle - half) * radius);
+                    ctx.arc(effect.source.x, effect.source.y, radius, baseAngle - half, baseAngle + half);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(255, 200, 0, 0.2)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
+                    ctx.lineWidth = s(2);
+                    ctx.stroke();
+                }
             });
         }
 
@@ -514,89 +583,129 @@
                 player.order = null;
                 player.current_turn_active = false;
             });
+            currentTowerHit = 0;
             currentPhase = 'init';
             setPhase('init');
+            updateTowerStatus();
             updateStatePanel();
             updateLog('リセットされました。デバフ生成を行ってください。');
         }
 
+        function assignTowerGroups() {
+            const pairIndices = pairGroups.map((_, idx) => idx);
+            const shuffledPairs = shuffle(pairIndices);
+            const firstTwo = new Set(shuffledPairs.slice(0, 2));
+            players.forEach(player => {
+                const pairIndex = pairGroups.findIndex(pair => pair.includes(player.id));
+                const group = firstTwo.has(pairIndex) ? '先組' : '後組';
+                player.debuff.group = group;
+                player.type = group;
+                player.current_turn_active = false;
+                player.debuff.mechanic = '';
+            });
+        }
+
+        function createTowerDebuffAssignment(groupPlayers, ordinal) {
+            const ids = groupPlayers.map(player => player.id);
+            const assignment = {};
+            ids.forEach(id => assignment[id] = '');
+
+            if (ordinal === 1) {
+                const type = Math.random() < 0.5 ? '円AoE' : '扇AoE';
+                const selected = shuffle(ids).slice(0, 2);
+                selected.forEach(id => assignment[id] = type);
+            } else if (ordinal === 2) {
+                const shuffledIds = shuffle(ids);
+                const headIds = shuffledIds.slice(0, 2);
+                const restIds = shuffledIds.slice(2);
+                headIds.forEach(id => assignment[id] = '頭割り');
+                assignment[restIds[0]] = '円AoE';
+                assignment[restIds[1]] = '扇AoE';
+            } else if (ordinal === 3) {
+                const shuffledIds = shuffle(ids);
+                const headIds = shuffledIds.slice(0, 2);
+                const restIds = shuffledIds.slice(2);
+                const type = Math.random() < 0.5 ? '円AoE' : '扇AoE';
+                headIds.forEach(id => assignment[id] = '頭割り');
+                restIds.forEach(id => assignment[id] = type);
+            }
+            return assignment;
+        }
+
+        function generateTowerDebuffAssignments() {
+            ['先組', '後組'].forEach(group => {
+                const groupPlayers = getPlayersByGroup(group);
+                for (let ordinal = 1; ordinal <= 4; ordinal += 1) {
+                    towerDebuffAssignments[group][ordinal] = createTowerDebuffAssignment(groupPlayers, ordinal);
+                }
+            });
+        }
+
+        function applyTowerHitDebuffs() {
+            if (currentTowerHit === 0) {
+                players.forEach(player => {
+                    player.debuff.mechanic = '';
+                    player.current_turn_active = false;
+                });
+                return;
+            }
+
+            const activeGroup = getTowerGroupByHit(currentTowerHit);
+            const ordinal = getGroupHitOrdinal(activeGroup, currentTowerHit);
+            const assignment = towerDebuffAssignments[activeGroup][ordinal] || {};
+
+            players.forEach(player => {
+                if (player.debuff.group === activeGroup) {
+                    player.debuff.mechanic = assignment[player.id] || '';
+                    player.current_turn_active = !!player.debuff.mechanic;
+                } else {
+                    player.debuff.mechanic = '';
+                    player.current_turn_active = false;
+                }
+            });
+        }
+
+        function updateTowerStatus() {
+            const towerStatus = document.getElementById('towerStatus');
+            const activeGroup = getTowerGroupByHit(currentTowerHit);
+            const groupText = activeGroup ? `担当: ${activeGroup}` : '担当: なし';
+            towerStatus.textContent = `塔着弾: ${currentTowerHit} / 8 (${groupText})`;
+        }
+
+        function setTowerHit(hit) {
+            currentTowerHit = Math.max(0, Math.min(8, hit));
+            applyTowerHitDebuffs();
+            updateTowerStatus();
+            updateStatePanel();
+            drawField();
+        }
+
+        function changeTowerHit(delta) {
+            setTowerHit(currentTowerHit + delta);
+        }
+
         function generateDebuff() {
             players = clonePlayers(initialPlayerState, getScaleFactor());
-
-            const thPlayers = players.filter(p => p.role === 'TANK' || p.role === 'HEALER');
-            const dpsPlayers = players.filter(p => p.role === 'DPS');
-            const thHead = thPlayers[Math.floor(Math.random() * thPlayers.length)];
-            const dpsHead = dpsPlayers[Math.floor(Math.random() * dpsPlayers.length)];
-            const thUsesCircle = Math.random() < 0.5;
-
-            thPlayers.forEach(player => {
-                if (player.id === thHead.id) {
-                    player.debuff.mechanic = '頭割り';
-                    player.type = '頭割り';
-                    player.current_turn_active = false;
-                } else {
-                    player.debuff.mechanic = thUsesCircle ? '円AoE' : '扇AoE';
-                    player.type = thUsesCircle ? '塔踏み(円)' : '塔踏み(扇)';
-                    player.current_turn_active = true;
-                }
+            players.forEach(player => {
+                player.debuff = { group: '', number: null, mechanic: '' };
+                player.order = null;
+                player.current_turn_active = false;
+                player.type = '無職';
             });
 
-            dpsPlayers.forEach(player => {
-                if (player.id === dpsHead.id) {
-                    player.debuff.mechanic = '頭割り';
-                    player.type = '頭割り';
-                    player.current_turn_active = false;
-                } else {
-                    player.debuff.mechanic = thUsesCircle ? '扇AoE' : '円AoE';
-                    player.type = thUsesCircle ? '塔踏み(扇)' : '塔踏み(円)';
-                    player.current_turn_active = true;
-                }
-            });
-
-            pairGroups.forEach(pair => {
-                const hasHeadInPair = pair.some(id => {
-                    const player = players.find(p => p.id === id);
-                    return player && player.debuff.mechanic === '頭割り';
-                });
-                const group = hasHeadInPair ? '先組' : '後組';
-                pair.forEach(id => {
-                    const player = players.find(p => p.id === id);
-                    if (player) player.debuff.group = group;
-                });
-            });
-
-            thPlayers.forEach(player => {
-                if (player.id === thHead.id) {
-                    player.debuff.mechanic = '頭割り';
-                    player.type = '頭割り';
-                    player.current_turn_active = false;
-                } else {
-                    player.debuff.mechanic = thUsesCircle ? '円AoE' : '扇AoE';
-                    player.type = thUsesCircle ? '塔踏み(円)' : '塔踏み(扇)';
-                    player.current_turn_active = true;
-                }
-            });
-
-            dpsPlayers.forEach(player => {
-                if (player.id === dpsHead.id) {
-                    player.debuff.mechanic = '頭割り';
-                    player.type = '頭割り';
-                    player.current_turn_active = false;
-                } else {
-                    player.debuff.mechanic = thUsesCircle ? '扇AoE' : '円AoE';
-                    player.type = thUsesCircle ? '塔踏み(扇)' : '塔踏み(円)';
-                    player.current_turn_active = true;
-                }
-            });
-
+            assignTowerGroups();
+            generateTowerDebuffAssignments();
             const orders = shuffle([1, 2, 3, 4, 5, 6, 7, 8]);
             players.forEach((player, index) => {
                 player.debuff.number = orders[index];
                 player.order = orders[index];
             });
 
+            currentTowerHit = 0;
+            applyTowerHitDebuffs();
+            updateTowerStatus();
             updateStatePanel();
-            updateLog('デバフを生成しました。頭割りがあるペアは先組、頭割りのないペアは後組になります。');
+            updateLog('デバフを生成しました。先組と後組が決まりました。塔着弾を進めてください。');
             drawField();
         }
 
@@ -726,8 +835,10 @@
 
         function updateStatePanel() {
             const statePanel = document.getElementById('statePanel');
+            const activeGroup = getTowerGroupByHit(currentTowerHit);
             let html = '<strong>現在の状態</strong><br>';
             html += `<div>フェーズ: ${currentPhase === 'init' ? '初期' : currentPhase === 'odd' ? '奇数回' : '偶数回'}</div>`;
+            html += `<div>塔着弾: ${currentTowerHit} / 8 (${activeGroup ? `担当: ${activeGroup}` : '担当: なし'})</div>`;
             html += '<div style="margin-top: 8px;">';
             pairGroups.forEach((pair, pairIndex) => {
                 const pairLabel = `ペア ${pairIndex + 1}`;
@@ -777,6 +888,8 @@
         buttons['odd'].addEventListener('click', () => setPhase('odd'));
         buttons['even'].addEventListener('click', () => setPhase('even'));
         document.getElementById('btn-generate').addEventListener('click', generateDebuff);
+        document.getElementById('btn-prev-hit').addEventListener('click', () => changeTowerHit(-1));
+        document.getElementById('btn-next-hit').addEventListener('click', () => changeTowerHit(1));
         document.getElementById('btn-align').addEventListener('click', autoAlign);
         document.getElementById('btn-check').addEventListener('click', checkGimmickSuccess);
         document.getElementById('btn-reset').addEventListener('click', resetSimulation);
