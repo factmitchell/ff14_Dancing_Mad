@@ -601,9 +601,16 @@
             let html = '<strong>現在の状態</strong><br>';
             html += `<div>フェーズ: ${currentPhase === 'init' ? '初期' : currentPhase === 'odd' ? '奇数回' : '偶数回'}</div>`;
             html += '<div style="margin-top: 8px;">';
-            players.forEach(player => {
-                const color = getPairColor(player.id);
-                html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>(${player.role}) : ${player.debuff.group || '未割当'} / ${player.debuff.number || '-'} / ${player.debuff.mechanic || player.type}<br>`;
+            pairGroups.forEach((pair, pairIndex) => {
+                const pairLabel = `ペア ${pairIndex + 1}`;
+                html += `<div style="margin-top: 6px; color: ${pairColors[pairIndex]}; font-weight: bold;">${pairLabel}</div>`;
+                pair.forEach(id => {
+                    const player = players.find(p => p.id === id);
+                    if (player) {
+                        const color = getPairColor(player.id);
+                        html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>(${player.role}) : ${player.debuff.group || '未割当'} / ${player.debuff.number || '-'} / ${player.debuff.mechanic || player.type}<br>`;
+                    }
+                });
             });
             html += '</div>';
             statePanel.innerHTML = html;
@@ -613,9 +620,15 @@
         function updateCoordsPanel() {
             const coordsPanel = document.getElementById('coordsPanel');
             let html = '<strong>座標一覧</strong><br>';
-            players.forEach(player => {
-                const color = getPairColor(player.id);
-                html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>: x=${Math.round(player.x)}, y=${Math.round(player.y)}<br>`;
+            pairGroups.forEach((pair, pairIndex) => {
+                html += `<div style="margin-top: 6px; color: ${pairColors[pairIndex]}; font-weight: bold;">ペア ${pairIndex + 1}</div>`;
+                pair.forEach(id => {
+                    const player = players.find(p => p.id === id);
+                    if (player) {
+                        const color = getPairColor(player.id);
+                        html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>: x=${Math.round(player.x)}, y=${Math.round(player.y)}<br>`;
+                    }
+                });
             });
             coordsPanel.innerHTML = html;
         }
