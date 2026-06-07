@@ -204,22 +204,18 @@ drawRoles();
 
 setInterval(()=>{
 
-    let timerReachedZero = false;
-
     roles.forEach(role=>{
 
         if(role.time > 0){
             role.time--;
-            if(role.time === 0){
-                timerReachedZero = true;
-            }
         }
 
     });
 
     drawRoles();
 
-    if(timerReachedZero){
+    const allTimedOut = roles.every(role => role.time <= 0);
+    if(allTimedOut){
         showResultImage();
     }
 
@@ -245,9 +241,9 @@ function showResultImage(){
     field.classList.add("show-correct");
 
     if(alwaysShowImage.checked){
-        message.textContent = "正解画像を表示します";
+        message.textContent = "常に正解画像を表示します";
     } else {
-        message.textContent = "image_correct.png を表示しました";
+        message.textContent = "正解画像を表示";
     }
 }
 
@@ -265,7 +261,7 @@ function resetGame(){
     } else {
         hideResultImage();
     }
-    message.textContent = alwaysShowImage.checked ? "正解画像を表示します" : "クリックで矢印を配置";
+    message.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "クリックで矢印を配置";
 }
 
 retryButton.addEventListener("click", resetGame);
@@ -276,7 +272,7 @@ alwaysShowImage.addEventListener("change", ()=>{
     } else {
         field.classList.remove("show-correct");
     }
-    message.textContent = alwaysShowImage.checked ? "正解画像を表示します" : "クリックで矢印を配置";
+    message.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "正解画像を表示";
 });
 
 field.addEventListener("click",(e)=>{
