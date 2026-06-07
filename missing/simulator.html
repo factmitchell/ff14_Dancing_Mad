@@ -98,12 +98,12 @@
     </div>
 
     <div id="sizeControl">
-        <label for="fieldSizeSlider">フィールドサイズ: <span id="sizeLabel">600</span> px</label>
-        <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="600">
+        <label for="fieldSizeSlider">フィールドサイズ: <span id="sizeLabel">750</span> px</label>
+        <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="750">
     </div>
 
     <div id="canvas-container">
-        <canvas id="fieldCanvas" width="600" height="600"></canvas>
+        <canvas id="fieldCanvas" width="750" height="750"></canvas>
     </div>
 
     <div id="info-panel">
@@ -122,7 +122,7 @@
         const canvas = document.getElementById('fieldCanvas');
         const ctx = canvas.getContext('2d');
         const BASE_CANVAS_SIZE = 600;
-        let cssSize = BASE_CANVAS_SIZE;
+        let cssSize = 750;
         const dpr = window.devicePixelRatio || 1;
         let centerX;
         let centerY;
