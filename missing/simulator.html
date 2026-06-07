@@ -132,7 +132,7 @@
         ];
 
         let players = clonePlayers(initialPlayerState);
-        const pairGroups = [['MT', 'ST'], ['H1', 'H2'], ['D1', 'D2'], ['D3', 'D4']];
+        const pairGroups = [['MT', 'H1'], ['ST', 'H2'], ['D1', 'D3'], ['D2', 'D4']];
 
         function clonePlayers(source) {
             return source.map(player => JSON.parse(JSON.stringify(player)));
@@ -385,18 +385,48 @@
 
         function generateDebuff() {
             players = clonePlayers(initialPlayerState);
-            pairGroups.forEach(pair => {
-                const first = Math.random() < 0.5 ? pair[0] : pair[1];
-                const second = first === pair[0] ? pair[1] : pair[0];
-                players.find(p => p.id === first).debuff.group = '先組';
-                players.find(p => p.id === second).debuff.group = '後組';
-            });
 
             const thPlayers = players.filter(p => p.role === 'TANK' || p.role === 'HEALER');
             const dpsPlayers = players.filter(p => p.role === 'DPS');
             const thHead = thPlayers[Math.floor(Math.random() * thPlayers.length)];
             const dpsHead = dpsPlayers[Math.floor(Math.random() * dpsPlayers.length)];
             const thUsesCircle = Math.random() < 0.5;
+
+            thPlayers.forEach(player => {
+                if (player.id === thHead.id) {
+                    player.debuff.mechanic = '頭割り';
+                    player.type = '頭割り';
+                    player.current_turn_active = false;
+                } else {
+                    player.debuff.mechanic = thUsesCircle ? '円AoE' : '扇AoE';
+                    player.type = thUsesCircle ? '塔踏み(円)' : '塔踏み(扇)';
+                    player.current_turn_active = true;
+                }
+            });
+
+            dpsPlayers.forEach(player => {
+                if (player.id === dpsHead.id) {
+                    player.debuff.mechanic = '頭割り';
+                    player.type = '頭割り';
+                    player.current_turn_active = false;
+                } else {
+                    player.debuff.mechanic = thUsesCircle ? '扇AoE' : '円AoE';
+                    player.type = thUsesCircle ? '塔踏み(扇)' : '塔踏み(円)';
+                    player.current_turn_active = true;
+                }
+            });
+
+            pairGroups.forEach(pair => {
+                const hasHeadInPair = pair.some(id => {
+                    const player = players.find(p => p.id === id);
+                    return player && player.debuff.mechanic === '頭割り';
+                });
+                const group = hasHeadInPair ? '先組' : '後組';
+                pair.forEach(id => {
+                    const player = players.find(p => p.id === id);
+                    if (player) player.debuff.group = group;
+                });
+            });
 
             thPlayers.forEach(player => {
                 if (player.id === thHead.id) {
@@ -429,7 +459,7 @@
             });
 
             updateStatePanel();
-            updateLog('デバフを生成しました。タンヒラとDPSがそれぞれ頭割り1名・他3名は同じAoE種別になります。');
+            updateLog('デバフを生成しました。頭割りがあるペアは先組、頭割りのないペアは後組になります。');
             drawField();
         }
 
