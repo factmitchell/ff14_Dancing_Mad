@@ -84,6 +84,16 @@ h1{
     font-size:24px;
 }
 
+#log{
+    margin:20px auto 0;
+    max-width:900px;
+    color:#fff;
+    font-size:18px;
+    text-align:left;
+    white-space:pre-wrap;
+    min-height:1.6em;
+}
+
 button{
     margin-top:10px;
     padding:10px 20px;
@@ -112,6 +122,8 @@ button:hover{
 クリックで矢印を配置
 </div>
 
+<div id="log"></div>
+
 <label style="display:block; margin:15px auto; max-width:900px; color:#fff; font-size:18px;">
     <input id="alwaysShowImage" type="checkbox" style="margin-right:10px;">
     正解画像を表示します
@@ -130,20 +142,106 @@ function randomArrow(){
 }
 
 const allowedArrowPairs = [
-    ["↓","↓"],
-    ["↑","↑"],
-    ["→","→"],
-    ["←","←"],
-    ["←","↑"],
-    ["→","↑"],
-    ["↓","←"],
-    ["↓","→"]
+    {
+        arrows: ["↓","↓"],
+        targets: [
+            { x: 260, y: 108 },
+            { x: 262, y: 200 }
+        ]
+    },
+    {
+        arrows: ["↑","↑"],
+        targets: [
+            { x: 640, y: 495 },
+            { x: 638, y: 392 }
+        ]
+    },
+    {
+        arrows: ["→","→"],
+        targets: [
+            { x: 267, y: 496 },
+            { x: 358, y: 496 }
+        ]
+    },
+    {
+        arrows: ["←","←"],
+        targets: [
+            { x: 540, y: 98 },
+            { x: 640, y: 109 }
+        ]
+    },
+    {
+        arrows: ["←","↑"],
+        targets: [
+            { x: 367, y: 106 },
+            { x: 362, y: 210 }
+        ]
+    },
+    {
+        arrows: ["→","↑"],
+        targets: [
+            { x: 537, y: 209 },
+            { x: 640, y: 206 }
+        ]
+    },
+    {
+        arrows: ["↓","←"],
+        targets: [
+            { x: 264, y: 388 },
+            { x: 360, y: 398 }
+        ]
+    },
+    {
+        arrows: ["↓","→"],
+        targets: [
+            { x: 540, y: 385 },
+            { x: 540, y: 487 }
+        ]
+    }
 ];
 
-function randomArrowPair(){
-    return allowedArrowPairs[
-        Math.floor(Math.random() * allowedArrowPairs.length)
-    ];
+let nextAllowedArrowPairIndex = 0;
+
+function nextArrowPair(){
+    const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
+    nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
+    return pair;
+}
+
+function isMatchingTarget(role, tx, ty){
+    if(role.x === null || role.y === null){
+        return false;
+    }
+    const dx = role.x - tx;
+    const dy = role.y - ty;
+    return Math.hypot(dx, dy) <= role.tolerance;
+}
+
+function isCorrectPlacement(role, index){
+    if(role.x === null || role.y === null){
+        return false;
+    }
+
+    const other = roles[index === 0 ? 1 : 0];
+    const sameArrowPair = other && role.arrow === other.arrow;
+
+    if(sameArrowPair){
+        if(other.x !== null && other.y !== null){
+            const directMatch =
+                isMatchingTarget(role, role.targetX, role.targetY) &&
+                isMatchingTarget(other, other.targetX, other.targetY);
+            const swappedMatch =
+                isMatchingTarget(role, other.targetX, other.targetY) &&
+                isMatchingTarget(other, role.targetX, role.targetY);
+            return directMatch || swappedMatch;
+        }
+        return (
+            isMatchingTarget(role, role.targetX, role.targetY) ||
+            isMatchingTarget(role, other.targetX, other.targetY)
+        );
+    }
+
+    return isMatchingTarget(role, role.targetX, role.targetY);
 }
 
 /* 固定秒数 */
@@ -151,17 +249,27 @@ function randomArrowPair(){
 const roles = [];
 
 function initRoles(){
-    const [arrow1, arrow2] = randomArrowPair();
+    const pair = nextArrowPair();
 
     roles.length = 0;
     roles.push(
         {
-            arrow: arrow1,
-            time: 3
+            arrow: pair.arrows[0],
+            time: 3,
+            x: null,
+            y: null,
+            targetX: pair.targets[0].x,
+            targetY: pair.targets[0].y,
+            tolerance: 20
         },
         {
-            arrow: arrow2,
-            time: 5
+            arrow: pair.arrows[1],
+            time: 5,
+            x: null,
+            y: null,
+            targetX: pair.targets[1].x,
+            targetY: pair.targets[1].y,
+            tolerance: 20
         }
     );
 }
@@ -180,6 +288,11 @@ function drawRoles(){
         const color =
             role.time <= 0 ? "red" : "white";
 
+        const status =
+            role.x !== null && role.y !== null ?
+            (isCorrectPlacement(role, index) ? "正解" : "不正解") :
+            "";
+
         const div =
             document.createElement("div");
 
@@ -192,13 +305,40 @@ function drawRoles(){
                  style="color:${color}">
                 ${Math.max(role.time,0)}
             </div>
+            <div>${status}</div>
         `;
 
         rolesDiv.appendChild(div);
     });
 }
 
+const logDiv = document.getElementById("log");
+
+function updateLog(){
+    const logLines = roles.map((role,index)=>{
+        const actual = role.x !== null && role.y !== null ?
+            `(${Math.round(role.x)}, ${Math.round(role.y)})` :
+            "未配置";
+        const target = `(${role.targetX}, ${role.targetY})`;
+        const dx = role.x !== null && role.y !== null ?
+            Math.round(role.x - role.targetX) :
+            null;
+        const dy = role.x !== null && role.y !== null ?
+            Math.round(role.y - role.targetY) :
+            null;
+        const error = dx !== null && dy !== null ?
+            `誤差: ${dx}, ${dy}` :
+            "誤差: 未計測";
+        const result = role.x !== null && role.y !== null ?
+            (isCorrectPlacement(role, index) ? "正解" : "不正解") :
+            "未配置";
+        return `役割${index + 1}: ${role.arrow} - 実績 ${actual} - 目標 ${target} - ${error} - ${result}`;
+    });
+    logDiv.textContent = logLines.join("\n");
+}
+
 drawRoles();
+updateLog();
 
 /* カウントダウン */
 
@@ -256,6 +396,7 @@ function resetGame(){
     nextRole = 0;
     initRoles();
     drawRoles();
+    updateLog();
     if(alwaysShowImage.checked){
         field.classList.add("show-correct");
     } else {
@@ -299,6 +440,17 @@ field.addEventListener("click",(e)=>{
         (e.clientY - rect.top) + "px";
 
     field.appendChild(marker);
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    roles[nextRole].x = x;
+    roles[nextRole].y = y;
+
+    const correct = isCorrectPlacement(roles[nextRole]);
+    message.textContent = `役割${nextRole + 1}配置: ${Math.round(x)}, ${Math.round(y)} - ${correct ? "正解" : "不正解"}`;
+
+    drawRoles();
+    updateLog();
 
     nextRole++;
 
