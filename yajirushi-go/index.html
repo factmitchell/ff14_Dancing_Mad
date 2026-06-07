@@ -89,8 +89,33 @@ h1{
 
 #action-message,
 #image-message{
-    margin-top:20px;
     font-size:24px;
+}
+
+#image-controls{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    margin:15px auto;
+    max-width:900px;
+    color:#fff;
+    font-size:18px;
+    flex-wrap:nowrap;
+    white-space:nowrap;
+}
+
+#image-controls label{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    white-space:nowrap;
+}
+
+#image-message{
+    display:inline-block;
+    margin-top:0;
+    white-space:nowrap;
 }
 
 #log{
@@ -170,14 +195,12 @@ button:hover{
 
 <button id="retry">やり直し</button>
 
-<label style="display:block; margin:15px auto; max-width:900px; color:#fff; font-size:18px;">
-    <input id="alwaysShowImage" type="checkbox" style="margin-right:10px;">
-    正解画像を表示します
-</label>
-
-<div id="image-message"></div>
-<div id="action-message">
-クリックで矢印を配置
+<div id="image-controls">
+    <label>
+        <input id="alwaysShowImage" type="checkbox">
+        正解画像を表示します
+    </label>
+    <div id="image-message"></div>
 </div>
 
 <div id="pattern-stats">
@@ -199,6 +222,10 @@ button:hover{
         </thead>
         <tbody id="pattern-stats-body"></tbody>
     </table>
+</div>
+
+<div id="action-message">
+クリックで矢印を配置
 </div>
 
 <div id="log"></div>
@@ -358,22 +385,21 @@ const patternOrder = [
 ];
 
 function nextArrowPair(){
-    let attempts = 0;
-    while(attempts < allowedArrowPairs.length){
-        const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
-        nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
-        const key = getPatternKey(pair.arrows);
-        if(enabledPatterns[key]){
-            currentPatternKey = key;
-            currentPatternLabel = getPatternLabel(pair.arrows);
-            roundRecorded = false;
-            return pair;
-        }
-        attempts++;
+    const enabledPairs = allowedArrowPairs.filter(pair =>
+        enabledPatterns[getPatternKey(pair.arrows)]
+    );
+    if(enabledPairs.length === 0){
+        currentPatternKey = "";
+        currentPatternLabel = "";
+        return null;
     }
-    currentPatternKey = "";
-    currentPatternLabel = "";
-    return null;
+    const pair = enabledPairs[
+        Math.floor(Math.random() * enabledPairs.length)
+    ];
+    currentPatternKey = getPatternKey(pair.arrows);
+    currentPatternLabel = getPatternLabel(pair.arrows);
+    roundRecorded = false;
+    return pair;
 }
 
 function isMatchingTarget(role, tx, ty){
@@ -707,8 +733,6 @@ field.addEventListener("click",(e)=>{
     const correct = isCorrectPlacement(roles[nextRole], nextRole);
     marker.className = `marker ${correct ? "correct" : "wrong"}`;
     field.appendChild(marker);
-
-    actionMessage.textContent = `役割${nextRole + 1}配置: ${Math.round(x)}, ${Math.round(y)} - ${correct ? "正解" : "不正解"}`;
 
     drawRoles();
     updateLog();
