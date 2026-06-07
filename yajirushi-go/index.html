@@ -87,7 +87,8 @@ h1{
     color:#ff6b6b;
 }
 
-#message{
+#action-message,
+#image-message{
     margin-top:20px;
     font-size:24px;
 }
@@ -174,15 +175,21 @@ button:hover{
     正解画像を表示します
 </label>
 
-<div id="message">
+<div id="image-message"></div>
+<div id="action-message">
 クリックで矢印を配置
 </div>
 
 <div id="pattern-stats">
-    <div>パターン別成績</div>
+    <div style="display:flex; gap:10px; align-items:center; justify-content:center; margin-bottom:10px;">
+        <span>パターン表</span>
+        <button id="enable-all-patterns">全部オン</button>
+        <button id="disable-all-patterns">全部オフ</button>
+    </div>
     <table>
         <thead>
             <tr>
+                <th>選択</th>
                 <th>No.</th>
                 <th>パターン</th>
                 <th>出題回数</th>
@@ -301,6 +308,7 @@ const arrowOrder = {
     "←": 3
 };
 const patternStats = {};
+const enabledPatterns = {};
 let currentPatternKey = "";
 let currentPatternLabel = "";
 let roundRecorded = false;
@@ -334,6 +342,7 @@ function initializePatternStats(){
         const key = getPatternKey(pair.arrows);
         const label = getPatternLabel(pair.arrows);
         ensurePatternStats(key, label);
+        enabledPatterns[key] = true;
     });
 }
 
@@ -342,19 +351,29 @@ const patternOrder = [
     { key: "↑↑", label: "↑ ↑" },
     { key: "→→", label: "→ →" },
     { key: "←←", label: "← ←" },
-    { key: "↓→", label: "→ ↓" },
+    { key: "→↓", label: "↓ →" },
     { key: "↓←", label: "↓ ←" },
-    { key: "↑←", label: "↑ ←" },
-    { key: "↑→", label: "↑ →" },
+    { key: "↑←", label: "↑ →" },
+    { key: "↑→", label: "↑ ←" },
 ];
 
 function nextArrowPair(){
-    const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
-    nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
-    currentPatternKey = getPatternKey(pair.arrows);
-    currentPatternLabel = getPatternLabel(pair.arrows);
-    roundRecorded = false;
-    return pair;
+    let attempts = 0;
+    while(attempts < allowedArrowPairs.length){
+        const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
+        nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
+        const key = getPatternKey(pair.arrows);
+        if(enabledPatterns[key]){
+            currentPatternKey = key;
+            currentPatternLabel = getPatternLabel(pair.arrows);
+            roundRecorded = false;
+            return pair;
+        }
+        attempts++;
+    }
+    currentPatternKey = "";
+    currentPatternLabel = "";
+    return null;
 }
 
 function isMatchingTarget(role, tx, ty){
@@ -418,6 +437,10 @@ function initRoles(){
     const pair = nextArrowPair();
 
     roles.length = 0;
+    if(!pair){
+        return;
+    }
+
     roles.push(
         {
             arrow: pair.arrows[0],
@@ -526,7 +549,9 @@ function updatePatternTable(){
             Math.round(stat.wins / stat.attempts * 100) :
             0;
         const row = document.createElement("tr");
+        const checked = enabledPatterns[order.key] ? "checked" : "";
         row.innerHTML = `
+            <td><input type="checkbox" data-pattern-key="${order.key}" ${checked}></td>
             <td>${index + 1}</td>
             <td>${order.label}</td>
             <td>${stat.attempts}</td>
@@ -535,6 +560,26 @@ function updatePatternTable(){
         `;
         tbody.appendChild(row);
     });
+
+    tbody.querySelectorAll("input[type=checkbox]").forEach(input => {
+        input.addEventListener("change", () => {
+            const key = input.dataset.patternKey;
+            enabledPatterns[key] = input.checked;
+            if(!Object.values(enabledPatterns).some(Boolean)){
+                actionMessage.textContent = "パターンを1つ以上選択してください";
+            } else {
+                actionMessage.textContent = "クリックで矢印を配置";
+            }
+        });
+    });
+}
+
+function setAllPatterns(enabled){
+    Object.keys(enabledPatterns).forEach(key => {
+        enabledPatterns[key] = enabled;
+    });
+    updatePatternTable();
+    actionMessage.textContent = enabled ? "クリックで矢印を配置" : "パターンを1つ以上選択してください";
 }
 
 drawRoles();
@@ -571,11 +616,23 @@ const field =
 const retryButton =
     document.getElementById("retry");
 
-const message =
-    document.getElementById("message");
+const actionMessage =
+    document.getElementById("action-message");
+
+const imageMessage =
+    document.getElementById("image-message");
+
+const enableAllButton =
+    document.getElementById("enable-all-patterns");
+
+const disableAllButton =
+    document.getElementById("disable-all-patterns");
 
 const alwaysShowImage =
     document.getElementById("alwaysShowImage");
+
+enableAllButton.addEventListener("click", () => setAllPatterns(true));
+disableAllButton.addEventListener("click", () => setAllPatterns(false));
 
 function showResultImage(){
     field.classList.add("show-correct");
@@ -583,9 +640,9 @@ function showResultImage(){
     updateLog();
 
     if(alwaysShowImage.checked){
-        message.textContent = "常に正解画像を表示します";
+        imageMessage.textContent = "常に正解画像を表示します";
     } else {
-        message.textContent = "正解画像を表示";
+        imageMessage.textContent = "正解画像を表示";
     }
 }
 
@@ -604,7 +661,8 @@ function resetGame(){
     } else {
         hideResultImage();
     }
-    message.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "クリックで矢印を配置";
+    actionMessage.textContent = "クリックで矢印を配置";
+    imageMessage.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "";
 }
 
 retryButton.addEventListener("click", resetGame);
@@ -615,7 +673,7 @@ alwaysShowImage.addEventListener("change", ()=>{
     } else {
         field.classList.remove("show-correct");
     }
-    message.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "正解画像を表示";
+    imageMessage.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "正解画像を表示";
 });
 
 field.addEventListener("click",(e)=>{
@@ -650,7 +708,7 @@ field.addEventListener("click",(e)=>{
     marker.className = `marker ${correct ? "correct" : "wrong"}`;
     field.appendChild(marker);
 
-    message.textContent = `役割${nextRole + 1}配置: ${Math.round(x)}, ${Math.round(y)} - ${correct ? "正解" : "不正解"}`;
+    actionMessage.textContent = `役割${nextRole + 1}配置: ${Math.round(x)}, ${Math.round(y)} - ${correct ? "正解" : "不正解"}`;
 
     drawRoles();
     updateLog();
