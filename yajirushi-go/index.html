@@ -182,6 +182,7 @@ button:hover{
     <table>
         <thead>
             <tr>
+                <th>No.</th>
                 <th>パターン</th>
                 <th>出題回数</th>
                 <th>正解</th>
@@ -335,6 +336,17 @@ function initializePatternStats(){
     });
 }
 
+const patternOrder = [
+    { key: "↓↓", label: "↓ ↓" },
+    { key: "↑↑", label: "↑ ↑" },
+    { key: "→→", label: "→ →" },
+    { key: "←←", label: "← ←" },
+    { key: "↓→", label: "→ ↓" },
+    { key: "↓←", label: "↓ ←" },
+    { key: "↑←", label: "↑ ←" },
+    { key: "↑→", label: "↑ →" },
+];
+
 function nextArrowPair(){
     const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
     nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
@@ -413,7 +425,7 @@ function initRoles(){
             y: null,
             targetX: pair.targets[0].x,
             targetY: pair.targets[0].y,
-            tolerance: 20
+            tolerance: 22
         },
         {
             arrow: pair.arrows[1],
@@ -422,7 +434,7 @@ function initRoles(){
             y: null,
             targetX: pair.targets[1].x,
             targetY: pair.targets[1].y,
-            tolerance: 20
+            tolerance: 22
         }
     );
 }
@@ -479,13 +491,16 @@ function updateLog(){
             "未配置";
         const target = `(${role.targetX}, ${role.targetY})`;
         const dx = role.x !== null && role.y !== null ?
-            Math.round(role.x - role.targetX) :
+            role.x - role.targetX :
             null;
         const dy = role.x !== null && role.y !== null ?
-            Math.round(role.y - role.targetY) :
+            role.y - role.targetY :
+            null;
+        const distance = dx !== null && dy !== null ?
+            Math.hypot(dx, dy) :
             null;
         const error = dx !== null && dy !== null ?
-            `誤差: ${dx}, ${dy}` :
+            `誤差: ${Math.round(dx)}, ${Math.round(dy)} (${distance.toFixed(1)} <= ${role.tolerance})` :
             "誤差: 未計測";
         const result = role.x !== null && role.y !== null ?
             (isCorrectPlacement(role, index) ? "正解" : "不正解") :
@@ -501,21 +516,24 @@ function updatePatternTable(){
     const tbody = document.getElementById("pattern-stats-body");
     tbody.innerHTML = "";
 
-    Object.values(patternStats)
-        .sort((a,b) => a.label.localeCompare(b.label, "ja"))
-        .forEach(stat => {
-            const rate = stat.attempts > 0 ?
-                Math.round(stat.wins / stat.attempts * 100) :
-                0;
-            const row = document.createElement("tr");
-            row.innerHTML = `
-                <td>${stat.label}</td>
-                <td>${stat.attempts}</td>
-                <td>${stat.wins}</td>
-                <td>${rate}%</td>
-            `;
-            tbody.appendChild(row);
-        });
+    patternOrder.forEach((order, index) => {
+        const stat = patternStats[order.key] || {
+            attempts: 0,
+            wins: 0
+        };
+        const rate = stat.attempts > 0 ?
+            Math.round(stat.wins / stat.attempts * 100) :
+            0;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${order.label}</td>
+            <td>${stat.attempts}</td>
+            <td>${stat.wins}</td>
+            <td>${rate}%</td>
+        `;
+        tbody.appendChild(row);
+    });
 }
 
 drawRoles();
