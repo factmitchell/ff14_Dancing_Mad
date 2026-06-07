@@ -102,6 +102,33 @@ h1{
     min-height:1.6em;
 }
 
+#pattern-stats{
+    margin:20px auto 0;
+    max-width:900px;
+    color:#fff;
+    text-align:left;
+}
+
+#pattern-stats table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:10px;
+}
+
+#pattern-stats th,
+#pattern-stats td{
+    border:1px solid #fff;
+    padding:8px 10px;
+}
+
+#pattern-stats th{
+    background:rgba(255,255,255,0.08);
+}
+
+#pattern-stats td{
+    background:rgba(255,255,255,0.05);
+}
+
 .status{
     font-size:20px;
     margin-top:10px;
@@ -148,6 +175,21 @@ button:hover{
 
 <div id="message">
 クリックで矢印を配置
+</div>
+
+<div id="pattern-stats">
+    <div>パターン別成績</div>
+    <table>
+        <thead>
+            <tr>
+                <th>パターン</th>
+                <th>出題回数</th>
+                <th>正解</th>
+                <th>正解率</th>
+            </tr>
+        </thead>
+        <tbody id="pattern-stats-body"></tbody>
+    </table>
 </div>
 
 <div id="log"></div>
@@ -285,6 +327,14 @@ function ensurePatternStats(key, label){
     }
 }
 
+function initializePatternStats(){
+    allowedArrowPairs.forEach(pair => {
+        const key = getPatternKey(pair.arrows);
+        const label = getPatternLabel(pair.arrows);
+        ensurePatternStats(key, label);
+    });
+}
+
 function nextArrowPair(){
     const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
     nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
@@ -348,6 +398,8 @@ function recordPatternResult(){
 /* 固定秒数 */
 
 const roles = [];
+
+initializePatternStats();
 
 function initRoles(){
     const pair = nextArrowPair();
@@ -440,20 +492,30 @@ function updateLog(){
             "未配置";
         return `役割${index + 1}: ${role.arrow} - 実績 ${actual} - 目標 ${target} - ${error} - ${result}`;
     });
-    const statsLines = Object.values(patternStats).map(stat => {
-        const rate = stat.attempts > 0 ?
-            Math.round(stat.wins / stat.attempts * 100) :
-            0;
-        return `パターン ${stat.label}: ${stat.wins}/${stat.attempts} (${rate}%)`;
-    });
-
-    if(statsLines.length){
-        logLines.push("");
-        logLines.push("パターン別成績:");
-        logLines.push(...statsLines);
-    }
 
     logDiv.textContent = logLines.join("\n");
+    updatePatternTable();
+}
+
+function updatePatternTable(){
+    const tbody = document.getElementById("pattern-stats-body");
+    tbody.innerHTML = "";
+
+    Object.values(patternStats)
+        .sort((a,b) => a.label.localeCompare(b.label, "ja"))
+        .forEach(stat => {
+            const rate = stat.attempts > 0 ?
+                Math.round(stat.wins / stat.attempts * 100) :
+                0;
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${stat.label}</td>
+                <td>${stat.attempts}</td>
+                <td>${stat.wins}</td>
+                <td>${rate}%</td>
+            `;
+            tbody.appendChild(row);
+        });
 }
 
 drawRoles();
