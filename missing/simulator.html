@@ -268,11 +268,17 @@
                     ctx.textBaseline = 'middle';
                     ctx.fillText(emoji, player.x, player.y - 22);
                 }
-                ctx.fillStyle = '#fff';
+
+                const labelText = player.id;
+                const labelY = player.y + 30;
                 ctx.font = 'bold 10px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(player.id, player.x, player.y + 22);
+                const labelWidth = ctx.measureText(labelText).width + 10;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                ctx.fillRect(player.x - labelWidth / 2, labelY - 8, labelWidth, 16);
+                ctx.fillStyle = '#fff';
+                ctx.fillText(labelText, player.x, labelY);
             });
         }
 
