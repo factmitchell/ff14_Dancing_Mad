@@ -248,12 +248,6 @@ function showResultImage(){
         message.textContent = "正解画像を表示します";
     } else {
         message.textContent = "image_correct.png を表示しました";
-        setTimeout(()=>{
-            if(!alwaysShowImage.checked){
-                field.classList.remove("show-correct");
-                message.textContent = "クリックで矢印を配置";
-            }
-        }, 2000);
     }
 }
 
