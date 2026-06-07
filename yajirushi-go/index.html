@@ -103,6 +103,11 @@ button:hover{
 クリックで矢印を配置
 </div>
 
+<label style="display:block; margin:15px auto; max-width:900px; color:#fff; font-size:18px;">
+    <input id="alwaysShowImage" type="checkbox" style="margin-right:10px;">
+    画像を常に背景に表示する
+</label>
+
 <button id="retry">やり直し</button>
 
 <script>
@@ -224,15 +229,32 @@ const retryButton =
 const message =
     document.getElementById("message");
 
+const alwaysShowImage =
+    document.getElementById("alwaysShowImage");
+
+function updateBackgroundVisibility(){
+    if(alwaysShowImage.checked){
+        field.classList.add("show-background");
+    } else {
+        field.classList.remove("show-background");
+    }
+}
+
 function showResultImage(){
     if(!field.classList.contains("show-background")){
         field.classList.add("show-background");
+    }
+    if(alwaysShowImage.checked){
+        message.textContent = "画像を常に背景に表示しています";
+    } else {
         message.textContent = "out!";
     }
 }
 
 function hideResultImage(){
-    field.classList.remove("show-background");
+    if(!alwaysShowImage.checked){
+        field.classList.remove("show-background");
+    }
 }
 
 function resetGame(){
@@ -240,11 +262,16 @@ function resetGame(){
     nextRole = 0;
     initRoles();
     drawRoles();
-    hideResultImage();
-    message.textContent = "クリックで矢印を配置";
+    updateBackgroundVisibility();
+    message.textContent = alwaysShowImage.checked ? "画像を常に背景に表示します" : "クリックで矢印を配置";
 }
 
 retryButton.addEventListener("click", resetGame);
+
+alwaysShowImage.addEventListener("change", ()=>{
+    updateBackgroundVisibility();
+    message.textContent = alwaysShowImage.checked ? "画像を常に背景に表示します" : "クリックで矢印を配置";
+});
 
 field.addEventListener("click",(e)=>{
 
