@@ -139,18 +139,18 @@ button:hover{
 
 <div id="field"></div>
 
-<div id="message">
-クリックで矢印を配置
-</div>
-
-<div id="log"></div>
+<button id="retry">やり直し</button>
 
 <label style="display:block; margin:15px auto; max-width:900px; color:#fff; font-size:18px;">
     <input id="alwaysShowImage" type="checkbox" style="margin-right:10px;">
     正解画像を表示します
 </label>
 
-<button id="retry">やり直し</button>
+<div id="message">
+クリックで矢印を配置
+</div>
+
+<div id="log"></div>
 
 <script>
 
@@ -250,10 +250,47 @@ const allowedArrowPairs = [
 ];
 
 let nextAllowedArrowPairIndex = 0;
+const arrowOrder = {
+    "↑": 0,
+    "→": 1,
+    "↓": 2,
+    "←": 3
+};
+const patternStats = {};
+let currentPatternKey = "";
+let currentPatternLabel = "";
+let roundRecorded = false;
+
+function getPatternKey(arrows){
+    return arrows
+        .slice()
+        .sort((a,b)=> arrowOrder[a] - arrowOrder[b])
+        .join("");
+}
+
+function getPatternLabel(arrows){
+    return arrows
+        .slice()
+        .sort((a,b)=> arrowOrder[a] - arrowOrder[b])
+        .join(" ");
+}
+
+function ensurePatternStats(key, label){
+    if(!patternStats[key]){
+        patternStats[key] = {
+            label,
+            attempts: 0,
+            wins: 0
+        };
+    }
+}
 
 function nextArrowPair(){
     const pair = allowedArrowPairs[nextAllowedArrowPairIndex];
     nextAllowedArrowPairIndex = (nextAllowedArrowPairIndex + 1) % allowedArrowPairs.length;
+    currentPatternKey = getPatternKey(pair.arrows);
+    currentPatternLabel = getPatternLabel(pair.arrows);
+    roundRecorded = false;
     return pair;
 }
 
@@ -291,6 +328,21 @@ function isCorrectPlacement(role, index){
     }
 
     return isMatchingTarget(role, role.targetX, role.targetY);
+}
+
+function recordPatternResult(){
+    if(roundRecorded || !currentPatternKey){
+        return;
+    }
+
+    const allCorrect = roles.every((role,index)=> isCorrectPlacement(role, index));
+    ensurePatternStats(currentPatternKey, currentPatternLabel);
+    const stats = patternStats[currentPatternKey];
+    stats.attempts += 1;
+    if(allCorrect){
+        stats.wins += 1;
+    }
+    roundRecorded = true;
 }
 
 /* 固定秒数 */
@@ -388,6 +440,19 @@ function updateLog(){
             "未配置";
         return `役割${index + 1}: ${role.arrow} - 実績 ${actual} - 目標 ${target} - ${error} - ${result}`;
     });
+    const statsLines = Object.values(patternStats).map(stat => {
+        const rate = stat.attempts > 0 ?
+            Math.round(stat.wins / stat.attempts * 100) :
+            0;
+        return `パターン ${stat.label}: ${stat.wins}/${stat.attempts} (${rate}%)`;
+    });
+
+    if(statsLines.length){
+        logLines.push("");
+        logLines.push("パターン別成績:");
+        logLines.push(...statsLines);
+    }
+
     logDiv.textContent = logLines.join("\n");
 }
 
@@ -433,6 +498,8 @@ const alwaysShowImage =
 
 function showResultImage(){
     field.classList.add("show-correct");
+    recordPatternResult();
+    updateLog();
 
     if(alwaysShowImage.checked){
         message.textContent = "常に正解画像を表示します";
