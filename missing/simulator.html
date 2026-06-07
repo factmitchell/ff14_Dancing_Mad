@@ -255,8 +255,8 @@
 
         function getPhaseTowers() {
             return [
-                { id: 'tower1', type: '円', position: { x: centerX - s(80), y: centerY + s(100) }, radius: s(45), required_players: 1, label: '塔(左)', color: 'rgba(0, 150, 255, 0.4)' },
-                { id: 'tower2', type: '円', position: { x: centerX + s(80), y: centerY + s(100) }, radius: s(45), required_players: 1, label: '塔(右)', color: 'rgba(255, 50, 50, 0.4)' }
+                { id: 'tower1', type: '円', position: { x: centerX - s(80), y: centerY + s(100) }, radius: s(60), required_players: 1, label: '塔(左)', color: 'rgba(0, 150, 255, 0.4)' },
+                { id: 'tower2', type: '円', position: { x: centerX + s(80), y: centerY + s(100) }, radius: s(60), required_players: 1, label: '塔(右)', color: 'rgba(255, 50, 50, 0.4)' }
             ];
         }
 
@@ -370,8 +370,8 @@
             const effects = [];
 
             if (currentPhase === 'odd') {
-                if (headPlayers[0]) effects.push({ type: 'HEAD', source: headPlayers[0], radius: 50, label: '頭割り1' });
-                if (headPlayers[1]) effects.push({ type: 'HEAD', source: headPlayers[1], radius: 50, label: '頭割り2' });
+                if (headPlayers[0]) effects.push({ type: 'HEAD', source: headPlayers[0], radius: 70, label: '頭割り1' });
+                if (headPlayers[1]) effects.push({ type: 'HEAD', source: headPlayers[1], radius: 70, label: '頭割り2' });
                 if (fanPlayers[0]) effects.push({ type: 'FAN', source: fanPlayers[0], target: nearestPlayer(fanPlayers[0]), radius: 90, angle: Math.PI / 3, label: '扇AoE' });
                 if (circlePlayers[0]) effects.push({ type: 'CIRCLE', source: circlePlayers[0], radius: 45, label: '円AoE' });
             } else if (currentPhase === 'even') {
