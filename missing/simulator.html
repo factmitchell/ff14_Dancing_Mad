@@ -159,16 +159,10 @@
         }
 
         function getPhaseTowers() {
-            if (currentPhase === 'odd') {
+            if (currentPhase === 'odd' || currentPhase === 'even') {
                 return [
-                    { id: 'tower1', type: '円', position: { x: centerX - 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '青サークル', color: 'rgba(0, 150, 255, 0.4)' },
-                    { id: 'tower2', type: '円', position: { x: centerX + 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '赤サークル', color: 'rgba(255, 50, 50, 0.4)' }
-                ];
-            }
-            if (currentPhase === 'even') {
-                return [
-                    { id: 'tower3', type: '扇', position: { x: centerX - 100, y: centerY + 50 }, radius: 40, required_players: 1, label: '塔(西)', color: 'rgba(255, 215, 0, 0.4)' },
-                    { id: 'tower4', type: '扇', position: { x: centerX + 100, y: centerY + 50 }, radius: 40, required_players: 1, label: '塔(東)', color: 'rgba(255, 215, 0, 0.4)' }
+                    { id: 'tower1', type: '円', position: { x: centerX - 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '塔(左)', color: 'rgba(0, 150, 255, 0.4)' },
+                    { id: 'tower2', type: '円', position: { x: centerX + 80, y: centerY + 100 }, radius: 45, required_players: 1, label: '塔(右)', color: 'rgba(255, 50, 50, 0.4)' }
                 ];
             }
             return [];
