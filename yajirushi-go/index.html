@@ -46,6 +46,21 @@ h1{
     border:2px solid white;
     background:#333;
     position:relative;
+    overflow:hidden;
+}
+
+#field::after{
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("image.png") center/contain no-repeat;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+#field.show-background::after{
+    opacity: 0.18;
 }
 
 .marker{
@@ -175,15 +190,24 @@ drawRoles();
 
 setInterval(()=>{
 
+    let timerReachedZero = false;
+
     roles.forEach(role=>{
 
         if(role.time > 0){
             role.time--;
+            if(role.time === 0){
+                timerReachedZero = true;
+            }
         }
 
     });
 
     drawRoles();
+
+    if(timerReachedZero){
+        showResultImage();
+    }
 
 },1000);
 
@@ -200,11 +224,23 @@ const retryButton =
 const message =
     document.getElementById("message");
 
+function showResultImage(){
+    if(!field.classList.contains("show-background")){
+        field.classList.add("show-background");
+        message.textContent = "out!";
+    }
+}
+
+function hideResultImage(){
+    field.classList.remove("show-background");
+}
+
 function resetGame(){
     field.querySelectorAll(".marker").forEach(marker=>marker.remove());
     nextRole = 0;
     initRoles();
     drawRoles();
+    hideResultImage();
     message.textContent = "クリックで矢印を配置";
 }
 
@@ -236,6 +272,10 @@ field.addEventListener("click",(e)=>{
     field.appendChild(marker);
 
     nextRole++;
+
+    if(nextRole >= roles.length){
+        showResultImage();
+    }
 });
 
 </script>
