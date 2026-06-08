@@ -701,11 +701,11 @@
                 player.order = orders[index];
             });
 
-            currentTowerHit = 0;
+            currentTowerHit = 1;
             applyTowerHitDebuffs();
             updateTowerStatus();
             updateStatePanel();
-            updateLog('デバフを生成しました。先組と後組が決まりました。塔着弾を進めてください。');
+            updateLog('デバフを生成しました。1回目の塔着弾の担当が表示されます。');
             drawField();
         }
 
