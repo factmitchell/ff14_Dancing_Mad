@@ -138,7 +138,7 @@
         <button id="btn-init" class="active">初期配置</button>
         <button id="btn-odd" style="display:none">奇数回</button>
         <button id="btn-even" style="display:none">偶数回</button>
-        <button id="btn-generate">デバフ生成</button>
+        <button id="btn-generate">開始</button>
         <button id="btn-prev-hit">前の塔</button>
         <button id="btn-next-hit">次の塔</button>
         <button id="btn-save-pos" style="display:none">位置保存</button>
@@ -1225,7 +1225,6 @@
 
         function generateDebuff() {
             players = clonePlayers(initialPlayerState, getScaleFactor());
-            // savedDebuffPositions はデバフ種別で保存しているため生成毎にリセットしない
             players.forEach(player => {
                 player.debuff = { group: '', number: null, mechanic: '' };
                 player.initialMechanic = '';
@@ -1237,15 +1236,15 @@
             assignTowerGroups();
             generateTowerDebuffAssignments();
 
-            // ヒット0: 初期デバフ（先組=頭割り/後組=AoE）を全員に表示
+            // デバフ生成は開始操作 — 混乱を避けるため hit 0 は表示せず即 hit 1 へ
             currentTowerHit = 0;
-            applyTowerHitDebuffs();
-            updateTowerStatus();
-            updateStatePanel();
-            updateLog('デバフを生成しました。\n' +
-                '【初期状態】先組(頭割り)・後組(円/扇AoE)を全員に表示中。\n' +
-                '「次の塔」で1回目の塔着弾に進んでください。');
-            drawField();
+            if (practiceMode) {
+                practiceSelected = null;
+                practiceChecked  = false;
+                practiceScores   = {};
+            }
+            setTowerHit(1);
+            updateLog('デバフを生成しました（1回目の塔から開始）。');
         }
 
         function getHorizontalAssignment(playersList) {
