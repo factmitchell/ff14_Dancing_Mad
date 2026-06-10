@@ -663,22 +663,40 @@
         }
 
         function assignTowerGroups() {
-            // KTヤーン式: T+Hペア(index 0,1)からランダムに1つ、M+Rペア(index 2,3)からランダムに1つを先組へ
-            // ペア丸ごと同グループ → 各グループ必ずT+H+M+Rの構成になる
-            const thFirst = Math.random() < 0.5 ? 0 : 1;
-            const mrFirst = Math.random() < 0.5 ? 2 : 3;
-            const sakiSet = new Set([thFirst, mrFirst]);
+            // KTヤーン式: 各ペアで1人が頭割り(→先組)、もう1人がAoE(→後組)
+            // ペアから1人ずつ別グループへ → 各グループ 1T/H + 1T/H + 1M + 1R の構成
+            const thAtoPlayers = []; // TH側の後組プレイヤー (pairGroups[0],[1])
+            const mrAtoPlayers = []; // M+R側の後組プレイヤー (pairGroups[2],[3])
 
-            pairGroups.forEach((pair, idx) => {
-                const group = sakiSet.has(idx) ? '先組' : '後組';
-                pair.forEach(id => {
-                    const p = players.find(pl => pl.id === id);
-                    p.debuff.group = group;
-                    p.type = group;
-                    p.debuff.mechanic = '';
-                    p.current_turn_active = false;
-                });
+            pairGroups.forEach((pair, pairIdx) => {
+                const [idA, idB] = pair;
+                const pA = players.find(p => p.id === idA);
+                const pB = players.find(p => p.id === idB);
+                const flip = Math.random() < 0.5;
+                const sakiP = flip ? pA : pB;
+                const atoP  = flip ? pB : pA;
+
+                // 先組: 頭割りマーカーが付く
+                sakiP.debuff.group   = '先組'; sakiP.type = '先組';
+                sakiP.debuff.mechanic = '頭割り'; sakiP.current_turn_active = false;
+
+                // 後組: AoEマーカー（種類は後で割り当て）
+                atoP.debuff.group   = '後組'; atoP.type = '後組';
+                atoP.debuff.mechanic = ''; atoP.current_turn_active = false;
+
+                if (pairIdx < 2) { thAtoPlayers.push(atoP); }
+                else             { mrAtoPlayers.push(atoP); }
             });
+
+            // TH後組2人: 一方が円AoE、他方が扇AoE（片方が円なら他方は扇）
+            const thS = shuffle(thAtoPlayers);
+            thS[0].debuff.mechanic = '円AoE';
+            thS[1].debuff.mechanic = '扇AoE';
+
+            // M+R後組2人: 同様に円/扇を割り当て
+            const mrS = shuffle(mrAtoPlayers);
+            mrS[0].debuff.mechanic = '円AoE';
+            mrS[1].debuff.mechanic = '扇AoE';
         }
 
         function createTowerDebuffAssignment(groupPlayers, hit) {
@@ -721,10 +739,8 @@
 
         function applyTowerHitDebuffs() {
             if (currentTowerHit === 0) {
-                players.forEach(player => {
-                    player.debuff.mechanic = '';
-                    player.current_turn_active = false;
-                });
+                // ヒット0: 初期状態 → assignTowerGroupsで設定した全員の初期デバフをそのまま表示
+                players.forEach(p => p.current_turn_active = false);
                 return;
             }
 
@@ -830,11 +846,14 @@
             assignTowerGroups();
             generateTowerDebuffAssignments();
 
-            currentTowerHit = 1;
+            // ヒット0: 初期デバフ（先組=頭割り/後組=AoE）を全員に表示
+            currentTowerHit = 0;
             applyTowerHitDebuffs();
             updateTowerStatus();
             updateStatePanel();
-            updateLog('デバフを生成しました。1回目の塔着弾の担当が表示されます。');
+            updateLog('デバフを生成しました。\n' +
+                '【初期状態】先組(頭割り)・後組(円/扇AoE)を全員に表示中。\n' +
+                '「次の塔」で1回目の塔着弾に進んでください。');
             drawField();
         }
 
