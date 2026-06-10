@@ -862,7 +862,7 @@
                 if (d < threshold && d < minDist) { minDist = d; nearest = z; }
             });
             if (nearest) {
-                practiceSelected = nearest.playerIds;
+                practiceSelected = nearest;  // ゾーンオブジェクト全体 {x, y, playerIds} を保持
                 updatePracticeStatus();
                 drawField();
                 return true;
@@ -870,11 +870,36 @@
             return false;
         }
 
+        function alignAllPlayers() {
+            const sf = getScaleFactor();
+            const parity = currentTowerHit % 2 === 1 ? 'odd' : 'even';
+            const posMap = savedDebuffPositions[parity] || defaultDebuffPositions[parity];
+            if (!posMap) return;
+            players.forEach(p => {
+                const key = getPlayerDebuffKey(p);
+                const pos = posMap[key];
+                if (pos) { p.x = pos.x * sf; p.y = pos.y * sf; }
+            });
+        }
+
         function checkPracticeAnswer() {
             if (!practiceMode || currentTowerHit === 0 || !practiceSelected) return false;
-            const correct = practiceSelected.includes(practiceJob);
+            const correct = practiceSelected.playerIds.includes(practiceJob);
             practiceChecked = true;
             practiceScores[currentTowerHit] = correct ? 'correct' : 'wrong';
+
+            // 全プレイヤーを正しい位置へ整列
+            alignAllPlayers();
+
+            // 不正解の場合: 練習ジョブだけ選択した誤位置に戻す
+            if (!correct) {
+                const practicePlayer = players.find(p => p.id === practiceJob);
+                if (practicePlayer) {
+                    practicePlayer.x = practiceSelected.x;
+                    practicePlayer.y = practiceSelected.y;
+                }
+            }
+
             showPracticeFeedback(correct);
             updatePracticeStatus();
             drawField();
@@ -931,7 +956,7 @@
 
             zones.forEach((zone, i) => {
                 const isSelected = practiceSelected &&
-                    practiceSelected.join(',') === zone.playerIds.join(',');
+                    practiceSelected.playerIds.join(',') === zone.playerIds.join(',');
                 const isCorrect  = correctIds.join(',') === zone.playerIds.join(',');
 
                 let fill = 'rgba(255,255,255,0.12)';
