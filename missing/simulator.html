@@ -1088,14 +1088,21 @@
 
         function updateCoordsPanel() {
             const coordsPanel = document.getElementById('coordsPanel');
-            let html = '<strong>座標一覧</strong><br>';
+            const sf = getScaleFactor();
+            let html = '<strong>座標一覧</strong> <span style="font-size:10px; color:#aaa;">(表示px / ベース600)</span><br>';
             pairGroups.forEach((pair, pairIndex) => {
                 html += `<div style="margin-top: 6px; color: ${pairColors[pairIndex]}; font-weight: bold;">ペア ${pairIndex + 1}</div>`;
                 pair.forEach(id => {
                     const player = players.find(p => p.id === id);
                     if (player) {
                         const color = getPairColor(player.id);
-                        html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>: x=${Math.round(player.x)}, y=${Math.round(player.y)}<br>`;
+                        const px = Math.round(player.x);
+                        const py = Math.round(player.y);
+                        const bx = Math.round(player.x / sf);
+                        const by = Math.round(player.y / sf);
+                        html += `<span style="color: ${color}; font-weight: bold;">${player.id}</span>: `
+                              + `(${px}, ${py}) `
+                              + `<span style="color:#888; font-size:10px;">base(${bx}, ${by})</span><br>`;
                     }
                 });
             });
