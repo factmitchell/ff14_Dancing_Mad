@@ -81,6 +81,53 @@
             line-height: 1.6;
         }
         .highlight { color: #ffd700; font-weight: bold; }
+
+        /* ── 練習モード ────────────────────────────────── */
+        #practice-panel {
+            margin-bottom: 10px;
+            max-width: 750px;
+            background: #1a2a1a;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid #2d4a2d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        #practice-panel .p-label { color: #7fff7f; font-weight: bold; font-size: 13px; white-space: nowrap; }
+        .job-btn {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 5px 13px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .job-btn:hover { background: #444; }
+        .job-btn.selected { background: #1a5a1a; color: #fff; border-color: #7fff7f; }
+        #practice-status { font-size: 12px; color: #aaa; width: 100%; }
+        @keyframes feedbackPop {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+            25%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+            65%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+        }
+        #practice-feedback {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 64px;
+            font-weight: bold;
+            display: none;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 30px currentColor, 0 0 60px currentColor;
+        }
     </style>
 </head>
 <body>
@@ -101,6 +148,22 @@
         <button id="btn-reset">リセット</button>
     </div>
 
+    <div id="practice-panel">
+        <span class="p-label">練習モード</span>
+        <span style="font-size:12px;color:#888;">ジョブ選択:</span>
+        <div id="job-selector" style="display:flex;gap:5px;flex-wrap:wrap;">
+            <button class="job-btn" data-job="MT">MT</button>
+            <button class="job-btn" data-job="ST">ST</button>
+            <button class="job-btn" data-job="H1">H1</button>
+            <button class="job-btn" data-job="H2">H2</button>
+            <button class="job-btn" data-job="D1">D1</button>
+            <button class="job-btn" data-job="D2">D2</button>
+            <button class="job-btn" data-job="D3">D3</button>
+            <button class="job-btn" data-job="D4">D4</button>
+        </div>
+        <div id="practice-status"></div>
+    </div>
+
     <div id="towerStatus" style="margin-top: 8px; max-width: 600px; background: #222; padding: 10px; border-radius: 8px; font-size: 13px; color: #fff;">塔着弾: 0 / 8</div>
 
     <div id="sizeControl">
@@ -110,6 +173,7 @@
 
     <div id="canvas-container">
         <canvas id="fieldCanvas" width="750" height="750"></canvas>
+        <div id="practice-feedback"></div>
     </div>
 
     <div id="info-panel">
@@ -513,6 +577,10 @@
             updateCoordsPanel();
 
             players.forEach(player => {
+                const isPracticeTarget = practiceMode && player.id === practiceJob;
+                const alpha = practiceMode ? (isPracticeTarget ? 1.0 : 0.25) : 1.0;
+                ctx.globalAlpha = alpha;
+
                 ctx.beginPath();
                 ctx.arc(player.x, player.y, s(18), 0, Math.PI * 2);
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
@@ -536,26 +604,34 @@
                     ctx.fill();
                 }
 
-                const emoji = getMechanicEmoji(player.debuff.mechanic || player.type);
-                if (emoji) {
-                    ctx.fillStyle = '#fff';
-                    ctx.font = scaledFont(14);
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(emoji, player.x, player.y - s(22));
+                if (!practiceMode || isPracticeTarget) {
+                    const emoji = getMechanicEmoji(player.debuff.mechanic || player.type);
+                    if (emoji) {
+                        ctx.fillStyle = '#fff';
+                        ctx.font = scaledFont(14);
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(emoji, player.x, player.y - s(22));
+                    }
                 }
 
-                const labelText = player.id;
-                const labelY = player.y + s(30);
-                ctx.font = scaledFont(10, 'bold');
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                const labelWidth = ctx.measureText(labelText).width + s(10);
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-                ctx.fillRect(player.x - labelWidth / 2, labelY - s(8), labelWidth, s(16));
-                ctx.fillStyle = '#fff';
-                ctx.fillText(labelText, player.x, labelY);
+                if (!practiceMode || isPracticeTarget) {
+                    const labelText = player.id;
+                    const labelY = player.y + s(30);
+                    ctx.font = scaledFont(10, 'bold');
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const labelWidth = ctx.measureText(labelText).width + s(10);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                    ctx.fillRect(player.x - labelWidth / 2, labelY - s(8), labelWidth, s(16));
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(labelText, player.x, labelY);
+                }
+
+                ctx.globalAlpha = 1.0;
             });
+
+            drawPracticeOverlay();
         }
 
         function drawGimmickGuides() {
@@ -721,8 +797,180 @@
             return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
         }
 
+        // ── 練習モード ────────────────────────────────────────────────────────
+        let practiceMode  = false;
+        let practiceJob   = null;
+        let practiceSelected = null;  // 選択したゾーンの playerIds 配列
+        let practiceChecked  = false;
+        let practiceScores   = {};    // { hitNum: 'correct'|'wrong' }
+        let practiceFeedbackTimer = null;
+
+        function getPracticeZones() {
+            if (currentTowerHit === 0) return [];
+            const sf = getScaleFactor();
+            const parity = currentTowerHit % 2 === 1 ? 'odd' : 'even';
+            const posMap = defaultDebuffPositions[parity];
+            const zones = [];
+            const coordKey = (x, y) => `${Math.round(x)},${Math.round(y)}`;
+            players.forEach(p => {
+                const key = getPlayerDebuffKey(p);
+                const base = posMap[key];
+                if (!base) return;
+                const x = base.x * sf;
+                const y = base.y * sf;
+                const ck = coordKey(x, y);
+                const existing = zones.find(z => coordKey(z.x, z.y) === ck);
+                if (existing) { existing.playerIds.push(p.id); }
+                else          { zones.push({ x, y, playerIds: [p.id] }); }
+            });
+            return zones;
+        }
+
+        function setPracticeJob(id) {
+            if (practiceJob === id) { exitPracticeMode(); return; }
+            practiceMode     = true;
+            practiceJob      = id;
+            practiceSelected = null;
+            practiceChecked  = false;
+            practiceScores   = {};
+            document.querySelectorAll('.job-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.job === id);
+            });
+            updatePracticeStatus();
+            drawField();
+        }
+
+        function exitPracticeMode() {
+            practiceMode = false;
+            practiceJob  = null;
+            practiceSelected = null;
+            practiceChecked  = false;
+            document.querySelectorAll('.job-btn').forEach(btn => btn.classList.remove('selected'));
+            updatePracticeStatus();
+            drawField();
+        }
+
+        function handlePracticeClick(cx, cy) {
+            if (!practiceMode || currentTowerHit === 0 || practiceChecked) return false;
+            const zones = getPracticeZones();
+            const threshold = s(28);
+            let nearest = null, minDist = Infinity;
+            zones.forEach(z => {
+                const d = Math.hypot(cx - z.x, cy - z.y);
+                if (d < threshold && d < minDist) { minDist = d; nearest = z; }
+            });
+            if (nearest) {
+                practiceSelected = nearest.playerIds;
+                updatePracticeStatus();
+                drawField();
+                return true;
+            }
+            return false;
+        }
+
+        function checkPracticeAnswer() {
+            if (!practiceMode || currentTowerHit === 0 || !practiceSelected) return false;
+            const correct = practiceSelected.includes(practiceJob);
+            practiceChecked = true;
+            practiceScores[currentTowerHit] = correct ? 'correct' : 'wrong';
+            showPracticeFeedback(correct);
+            updatePracticeStatus();
+            drawField();
+            return true;
+        }
+
+        function showPracticeFeedback(correct) {
+            const el = document.getElementById('practice-feedback');
+            if (practiceFeedbackTimer) clearTimeout(practiceFeedbackTimer);
+            el.textContent  = correct ? '✓' : '✗';
+            el.style.color  = correct ? '#7fff7f' : '#ff4444';
+            el.style.display = 'block';
+            el.style.animation = 'none';
+            void el.offsetWidth; // reflow
+            el.style.animation = 'feedbackPop 1.2s ease-out forwards';
+            practiceFeedbackTimer = setTimeout(() => { el.style.display = 'none'; }, 1200);
+        }
+
+        function updatePracticeStatus() {
+            const el = document.getElementById('practice-status');
+            if (!practiceMode) { el.innerHTML = ''; return; }
+            const answered = Object.keys(practiceScores).length;
+            const correct  = Object.values(practiceScores).filter(v => v === 'correct').length;
+            let html = `練習中: <strong style="color:#ffd700">${practiceJob}</strong>`;
+            if (answered > 0) html += ` &nbsp;|&nbsp; スコア: <strong>${correct}/${answered}</strong>`;
+            if (currentTowerHit > 0) {
+                if (practiceChecked) {
+                    const r = practiceScores[currentTowerHit];
+                    if (r === 'correct') html += ' &nbsp;|&nbsp; <span style="color:#7fff7f">✓ 正解！</span>';
+                    else                 html += ' &nbsp;|&nbsp; <span style="color:#ff4444">✗ 不正解 — 緑のゾーンが正解です</span>';
+                } else if (practiceSelected) {
+                    html += ' &nbsp;|&nbsp; <span style="color:#ffd700">選択済み → 「答え合わせ」を押してください</span>';
+                } else {
+                    html += ' &nbsp;|&nbsp; <span style="color:#888">番号ゾーンをクリックして位置を選択してください</span>';
+                }
+            }
+            el.innerHTML = html;
+        }
+
+        function drawPracticeOverlay() {
+            if (!practiceMode || currentTowerHit === 0) return;
+            const zones = getPracticeZones();
+            const correctIds = (() => {
+                const parity = currentTowerHit % 2 === 1 ? 'odd' : 'even';
+                const key = getPlayerDebuffKey(players.find(p => p.id === practiceJob));
+                const base = defaultDebuffPositions[parity][key];
+                if (!base) return [];
+                const sf = getScaleFactor();
+                const cx = base.x * sf, cy = base.y * sf;
+                const ck = z => `${Math.round(z.x)},${Math.round(z.y)}`;
+                const found = zones.find(z => ck(z) === `${Math.round(cx)},${Math.round(cy)}`);
+                return found ? found.playerIds : [];
+            })();
+
+            zones.forEach((zone, i) => {
+                const isSelected = practiceSelected &&
+                    practiceSelected.join(',') === zone.playerIds.join(',');
+                const isCorrect  = correctIds.join(',') === zone.playerIds.join(',');
+
+                let fill = 'rgba(255,255,255,0.12)';
+                let stroke = 'rgba(255,255,255,0.5)';
+                let textColor = '#fff';
+
+                if (practiceChecked) {
+                    if (isCorrect) {
+                        fill = 'rgba(100,255,100,0.25)'; stroke = '#7fff7f'; textColor = '#7fff7f';
+                    } else if (isSelected) {
+                        fill = 'rgba(255,60,60,0.25)'; stroke = '#ff4444'; textColor = '#ff4444';
+                    } else {
+                        fill = 'rgba(255,255,255,0.06)'; stroke = 'rgba(255,255,255,0.25)'; textColor = '#666';
+                    }
+                } else if (isSelected) {
+                    fill = 'rgba(255,215,0,0.25)'; stroke = '#ffd700'; textColor = '#ffd700';
+                }
+
+                const r = s(22);
+                ctx.beginPath();
+                ctx.arc(zone.x, zone.y, r, 0, Math.PI * 2);
+                ctx.fillStyle = fill;
+                ctx.fill();
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = s(2.5);
+                ctx.stroke();
+
+                ctx.fillStyle = textColor;
+                ctx.font = scaledFont(14, 'bold');
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(i + 1), zone.x, zone.y);
+            });
+        }
+
         canvas.addEventListener('mousedown', e => {
             const pos = getMousePos(e);
+            if (practiceMode && currentTowerHit > 0) {
+                handlePracticeClick(pos.x, pos.y);
+                return;
+            }
             players.forEach(player => {
                 const dist = Math.hypot(player.x - pos.x, player.y - pos.y);
                 if (dist < s(16)) {
@@ -913,6 +1161,12 @@
         function setTowerHit(hit) {
             currentTowerHit = Math.max(0, Math.min(8, hit));
             applyTowerHitDebuffs();
+            // 練習モード: ヒットが変わったら選択・判定状態をリセット
+            if (practiceMode) {
+                practiceSelected = null;
+                practiceChecked  = false;
+                updatePracticeStatus();
+            }
             updateTowerStatus();
             updateStatePanel();
             drawField();
@@ -1182,8 +1436,14 @@
         document.getElementById('btn-prev-hit').addEventListener('click', () => changeTowerHit(-1));
         document.getElementById('btn-next-hit').addEventListener('click', () => changeTowerHit(1));
         document.getElementById('btn-align').addEventListener('click', autoAlign);
-        document.getElementById('btn-check').addEventListener('click', checkGimmickSuccess);
+        document.getElementById('btn-check').addEventListener('click', () => {
+            if (practiceMode) { checkPracticeAnswer(); } else { checkGimmickSuccess(); }
+        });
         document.getElementById('btn-reset').addEventListener('click', resetSimulation);
+
+        document.querySelectorAll('.job-btn').forEach(btn => {
+            btn.addEventListener('click', () => setPracticeJob(btn.dataset.job));
+        });
 
         const fieldSizeSlider = document.getElementById('fieldSizeSlider');
         const sizeLabel = document.getElementById('sizeLabel');
