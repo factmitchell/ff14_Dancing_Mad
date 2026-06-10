@@ -171,9 +171,12 @@
         <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="750">
     </div>
 
-    <div id="canvas-container">
-        <canvas id="fieldCanvas" width="750" height="750"></canvas>
-        <div id="practice-feedback"></div>
+    <div style="display:flex; align-items:flex-start; gap:16px;">
+        <div id="canvas-container">
+            <canvas id="fieldCanvas" width="750" height="750"></canvas>
+            <div id="practice-feedback"></div>
+        </div>
+        <div id="statePanel" style="background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; min-width: 220px;"></div>
     </div>
 
     <div id="info-panel">
@@ -185,7 +188,6 @@
         * 「自動整列」: 奇数回=頭割り位置、偶数回=KTコア配置（上左:Tank, 上右:Melee, 左:Healer, 右:Ranged）
     </div>
 
-    <div id="statePanel" style="margin-top: 12px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;"></div>
     <div id="coordsPanel" style="margin-top: 10px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;"></div>
     <div id="logPanel" style="margin-top: 10px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;"></div>
     <div id="exportPanel" style="display:none; margin-top: 10px; max-width: 600px; width: 100%;">
