@@ -96,6 +96,7 @@
         <button id="btn-next-hit">次の塔</button>
         <button id="btn-save-pos">位置保存</button>
         <button id="btn-align">自動整列</button>
+        <button id="btn-export">座標出力</button>
         <button id="btn-check">答え合わせ</button>
         <button id="btn-reset">リセット</button>
     </div>
@@ -123,6 +124,15 @@
     <div id="statePanel" style="margin-top: 12px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;"></div>
     <div id="coordsPanel" style="margin-top: 10px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;"></div>
     <div id="logPanel" style="margin-top: 10px; max-width: 600px; background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;"></div>
+    <div id="exportPanel" style="display:none; margin-top: 10px; max-width: 600px; width: 100%;">
+        <div style="background:#1a1a2e; padding: 8px 12px; border-radius: 8px 8px 0 0; font-size: 12px; color:#aaa;">
+            ↓ このコードをコピーして <strong style="color:#ffd700">defaultPositions</strong> 変数に貼り付けてください
+        </div>
+        <textarea id="exportText" readonly
+            style="width:100%; height:280px; background:#0d0d1a; color:#7ec8e3; font-family:monospace; font-size:12px;
+                   border:1px solid #333; border-top:none; border-radius: 0 0 8px 8px; padding:10px; box-sizing:border-box; resize:vertical;">
+        </textarea>
+    </div>
 
     <script>
         const canvas = document.getElementById('fieldCanvas');
@@ -174,8 +184,60 @@
 
         // Stores debuff assignments: { 'group': { ordinal: { id: mech, ... } } }
         let towerDebuffAssignments = { '先組': {}, '後組': {} };
-        // 手動設定した配置を保存: { hitNumber: { playerId: {x, y} } }
+        // 手動設定した配置を保存: { hitNumber: { playerId: {x, y} } }  ← ベース座標で保存
         let savedPositions = {};
+
+        // 手動設定済みのデフォルト配置座標（ベース座標）:
+        const defaultPositions = {
+            1: {
+                MT: { x: 265, y: 354 }, ST: { x: 220, y: 400 },
+                H1: { x: 216, y: 478 }, H2: { x: 219, y: 447 },
+                D1: { x: 320, y: 364 }, D2: { x: 374, y: 360 },
+                D3: { x: 326, y: 348 }, D4: { x: 388, y: 440 },
+            },
+            2: {
+                MT: { x: 240, y: 192 }, ST: { x: 225, y: 351 },
+                H1: { x: 150, y: 307 }, H2: { x: 217, y: 440 },
+                D1: { x: 341, y: 192 }, D2: { x: 368, y: 351 },
+                D3: { x: 427, y: 303 }, D4: { x: 388, y: 440 },
+            },
+            3: {
+                MT: { x: 254, y: 346 }, ST: { x: 219, y: 445 },
+                H1: { x: 214, y: 477 }, H2: { x: 221, y: 399 },
+                D1: { x: 323, y: 344 }, D2: { x: 374, y: 362 },
+                D3: { x: 333, y: 339 }, D4: { x: 383, y: 446 },
+            },
+            4: {
+                MT: { x: 361, y: 351 }, ST: { x: 237, y: 204 },
+                H1: { x: 227, y: 346 }, H2: { x: 158, y: 296 },
+                D1: { x: 215, y: 439 }, D2: { x: 347, y: 200 },
+                D3: { x: 389, y: 436 }, D4: { x: 428, y: 300 },
+            },
+            5: {
+                MT: { x: 220, y: 400 }, ST: { x: 256, y: 346 },
+                H1: { x: 217, y: 442 }, H2: { x: 215, y: 477 },
+                D1: { x: 374, y: 354 }, D2: { x: 321, y: 346 },
+                D3: { x: 382, y: 441 }, D4: { x: 326, y: 341 },
+            },
+            6: {
+                MT: { x: 386, y: 439 }, ST: { x: 241, y: 201 },
+                H1: { x: 218, y: 442 }, H2: { x: 158, y: 300 },
+                D1: { x: 229, y: 351 }, D2: { x: 352, y: 199 },
+                D3: { x: 379, y: 351 }, D4: { x: 440, y: 305 },
+            },
+            7: {
+                MT: { x: 220, y: 400 }, ST: { x: 259, y: 350 },
+                H1: { x: 216, y: 442 }, H2: { x: 213, y: 480 },
+                D1: { x: 383, y: 441 }, D2: { x: 316, y: 346 },
+                D3: { x: 374, y: 352 }, D4: { x: 315, y: 349 },
+            },
+            8: {
+                MT: { x: 247, y: 200 }, ST: { x: 372, y: 352 },
+                H1: { x: 168, y: 295 }, H2: { x: 214, y: 441 },
+                D1: { x: 344, y: 200 }, D2: { x: 228, y: 348 },
+                D3: { x: 428, y: 297 }, D4: { x: 384, y: 442 },
+            },
+        };
 
         function getTowerGroupByHit(hit) {
             return towerHitGroups[Math.min(Math.max(0, hit - 1), 7)] || null;
@@ -389,7 +451,7 @@
                     type: player.debuff.mechanic,
                     source: player,
                     target: player.debuff.mechanic === '扇AoE' ? nearestPlayer(player) : null,
-                    radius: player.debuff.mechanic === '扇AoE' ? 90 : 67,
+                    radius: player.debuff.mechanic === '扇AoE' ? 90 : 69,
                     label: player.debuff.mechanic
                 }));
         }
@@ -716,14 +778,43 @@
                 updateLog('デバフを生成してから位置を保存してください。');
                 return;
             }
+            const sf = getScaleFactor();
             savedPositions[currentTowerHit] = {};
             players.forEach(p => {
-                savedPositions[currentTowerHit][p.id] = { x: p.x, y: p.y };
+                // ベース座標で保存（スケール変更に対応）
+                savedPositions[currentTowerHit][p.id] = {
+                    x: Math.round(p.x / sf),
+                    y: Math.round(p.y / sf)
+                };
             });
             updateTowerStatus();
             const savedCount = Object.keys(savedPositions).length;
-            updateLog(`[${currentTowerHit}回目] 全プレイヤーの配置を保存しました。(保存済み: ${savedCount}/8 回)\n` +
+            updateLog(`[${currentTowerHit}回目] 配置を保存しました。(保存済み: ${savedCount}/8 回)\n` +
                 `保存した回: ${Object.keys(savedPositions).sort((a,b)=>a-b).join(', ')} 回目`);
+        }
+
+        function exportPositions() {
+            const hits = Object.keys(savedPositions).map(Number).sort((a, b) => a - b);
+            if (hits.length === 0) {
+                updateLog('保存済みの配置がありません。先に各回を配置して「位置保存」してください。');
+                return;
+            }
+            let code = 'const defaultPositions = {\n';
+            hits.forEach(hit => {
+                code += `    ${hit}: {\n`;
+                Object.entries(savedPositions[hit]).forEach(([id, pos]) => {
+                    code += `        ${id}: { x: ${pos.x}, y: ${pos.y} },\n`;
+                });
+                code += '    },\n';
+            });
+            code += '};';
+
+            const panel = document.getElementById('exportPanel');
+            const textarea = document.getElementById('exportText');
+            panel.style.display = 'block';
+            textarea.value = code;
+            textarea.select();
+            updateLog(`${hits.length}/8 回分の座標を出力しました。テキストをコピーして\nコード内の defaultPositions に貼り付けてください。`);
         }
 
         function generateDebuff() {
@@ -761,26 +852,29 @@
                 return;
             }
 
-            if (!savedPositions[currentTowerHit]) {
+            const positions = savedPositions[currentTowerHit] || defaultPositions[currentTowerHit];
+            if (!positions) {
                 const missing = [];
                 for (let i = 1; i <= 8; i++) {
-                    if (!savedPositions[i]) missing.push(i);
+                    if (!savedPositions[i] && !defaultPositions[i]) missing.push(i);
                 }
                 updateLog(
                     `[${currentTowerHit}回目] 保存済み配置がありません。\n` +
-                    `手順: 各ヒット番号に移動 → プレイヤーをドラッグして正しい位置へ → 「位置保存」ボタンで保存\n` +
-                    `未保存の回: ${missing.join(', ')} 回目`
+                    `手順: ドラッグで配置 → 「位置保存」→ 「座標出力」でコードを取得\n` +
+                    `未設定の回: ${missing.join(', ')} 回目`
                 );
                 return;
             }
 
+            const sf = getScaleFactor();
             players.forEach(p => {
-                const pos = savedPositions[currentTowerHit][p.id];
-                if (pos) { p.x = pos.x; p.y = pos.y; }
+                const pos = positions[p.id];
+                // ベース座標で保存されているので現在のスケールを掛けて適用
+                if (pos) { p.x = pos.x * sf; p.y = pos.y * sf; }
             });
 
-            const savedCount = Object.keys(savedPositions).length;
-            updateLog(`[${currentTowerHit}回目] 保存済み配置を適用しました。(保存済み: ${savedCount}/8 回)`);
+            const src = savedPositions[currentTowerHit] ? 'セッション保存' : 'defaultPositions';
+            updateLog(`[${currentTowerHit}回目] 配置を適用しました（ソース: ${src}）`);
             updateStatePanel();
             drawField();
         }
@@ -921,6 +1015,7 @@
         buttons['even'].addEventListener('click', () => setPhase('even'));
         document.getElementById('btn-generate').addEventListener('click', generateDebuff);
         document.getElementById('btn-save-pos').addEventListener('click', saveCurrentPositions);
+        document.getElementById('btn-export').addEventListener('click', exportPositions);
         document.getElementById('btn-prev-hit').addEventListener('click', () => changeTowerHit(-1));
         document.getElementById('btn-next-hit').addEventListener('click', () => changeTowerHit(1));
         document.getElementById('btn-align').addEventListener('click', autoAlign);
