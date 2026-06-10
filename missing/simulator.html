@@ -239,13 +239,15 @@
             },
         };
 
-        // デバフキー体系:
-        //   active_TANK/HEALER/MELEE/RANGED_頭割り など → アクティブ時は役割+デバフで識別
+        // デバフキー体系（16座標管理）:
+        //   奇数ヒット active: active_TH_頭割り/扇AoE, active_DPS_頭割り/円AoE
+        //     同ペア内でデバフが必ず異なる→衝突なし
+        //   偶数ヒット active: active_HEALER/TANK/MELEE/RANGED（デバフ不問）
+        //     同ペア内で同デバフになり得るため役割のみで識別
         //     TH: HEALER=塔左優先, TANK=塔右優先
         //     DPS: MELEE(D1/D2)=塔左優先, RANGED(D3/D4)=塔右優先
-        //   inactive_TH_円AoE / inactive_DPS_扇AoE など → 非アクティブ後組はinitialMechanicで識別
-        //   inactive_TANK_先組 / inactive_HEALER_先組 → 非アクティブ先組TH（TANK/HEALERで区別）
-        //   inactive_DPS_先組_0 / inactive_DPS_先組_1 → 非アクティブ先組DPS（ペア内順序で区別）
+        //   inactive 後組: inactive_TH_円AoE/扇AoE, inactive_DPS_円AoE/扇AoE
+        //   inactive 先組: inactive_TANK_先組, inactive_HEALER_先組, inactive_DPS_先組_0/1
         function getActiveRole(player) {
             if (player.role === 'TANK')   return 'TANK';
             if (player.role === 'HEALER') return 'HEALER';
@@ -259,13 +261,20 @@
             const status = isActive ? 'active' : 'inactive';
             const roleType = (player.role === 'TANK' || player.role === 'HEALER') ? 'TH' : 'DPS';
             if (isActive) {
-                return `${status}_${getActiveRole(player)}_${player.debuff.mechanic || 'none'}`;
+                if (currentTowerHit % 2 === 0) {
+                    // 偶数ヒット: 役割で位置決定（同ペアで同デバフになり得るため）
+                    return `${status}_${getActiveRole(player)}`;
+                }
+                // 奇数ヒット: 同ペア内でデバフが必ず異なるためデバフで位置決定
+                return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
             }
-            // 非アクティブ 先組: ペア内で両名ともinitialMechanic='頭割り'になるため
-            // TANKとHEALERを個別識別、DPSはペア内インデックスで識別
+            // 非アクティブ 先組 (hit 4-7):
+            //   TH: hit8のデバフ(initialMechanic更新済)で後組TH待機と同じ場所を使う
+            //   DPS: ペア内順序で識別（奇数/偶数で位置が変わる）
             if (player.debuff.group === '先組') {
-                if (player.role === 'TANK')   return `${status}_TANK_先組`;
-                if (player.role === 'HEALER') return `${status}_HEALER_先組`;
+                if (player.role === 'TANK' || player.role === 'HEALER') {
+                    return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
+                }
                 const pairIdx   = pairGroups.findIndex(pair => pair.includes(player.id));
                 const posInPair = pairGroups[pairIdx].indexOf(player.id);
                 return `${status}_DPS_先組_${posInPair}`;
@@ -280,50 +289,41 @@
         // inactive_TH/DPS_頭割り_pairN = 非アクティブ先組（全員頭割りのためペア番号で識別）
         const defaultDebuffPositions = {
             odd: {
-                // アクティブ組（奇数回: 頭割り+扇AoE or 頭割り+円AoE）
-                // 同ペア内でデバフ種別が必ず異なるため衝突なし（役割ベースで位置共有）
-                // TH: HEALER=塔左, TANK=塔右
-                'active_HEALER_頭割り': { x: 221, y: 399 },
-                'active_HEALER_扇AoE':  { x: 218, y: 445 },
-                'active_TANK_頭割り':   { x: 221, y: 399 },
-                'active_TANK_扇AoE':    { x: 218, y: 445 },
-                // DPS: MELEE=塔左, RANGED=塔右
-                'active_MELEE_頭割り':  { x: 374, y: 355 },
-                'active_MELEE_円AoE':   { x: 380, y: 441 },
-                'active_RANGED_頭割り': { x: 374, y: 355 },
-                'active_RANGED_円AoE':  { x: 380, y: 441 },
-                // 非アクティブ後組（先組アクティブ時: hits 1,3,5,7の後組側）
+                // アクティブ(4): 奇数ヒットは同ペア内でデバフが必ず異なるためデバフで識別
+                'active_TH_頭割り':   { x: 221, y: 399 },
+                'active_TH_扇AoE':    { x: 218, y: 445 },
+                'active_DPS_頭割り':  { x: 374, y: 355 },
+                'active_DPS_円AoE':   { x: 380, y: 441 },
+                // 非アクティブ後組(4): hits 1,3は後組が待機
                 'inactive_TH_円AoE':  { x: 258, y: 348 },
                 'inactive_TH_扇AoE':  { x: 219, y: 479 },
                 'inactive_DPS_円AoE': { x: 321, y: 352 },
                 'inactive_DPS_扇AoE': { x: 325, y: 352 },
-                // 非アクティブ先組（後組アクティブ時: hits 5,7の先組側）
+                // 非アクティブ先組(4): hits 5,7は先組が待機
+                // TH先組はhit8デバフで inactive_TH_* を使うためここは参照されない
                 'inactive_TANK_先組':   { x: 256, y: 346 },
                 'inactive_HEALER_先組': { x: 217, y: 442 },
-                'inactive_DPS_先組_0':  { x: 374, y: 354 },
-                'inactive_DPS_先組_1':  { x: 326, y: 341 },
+                // DPS先組: MELEE(index0)→下, RANGED(index1)→上
+                'inactive_DPS_先組_0':  { x: 326, y: 341 },
+                'inactive_DPS_先組_1':  { x: 374, y: 354 },
             },
             even: {
-                // アクティブ組（偶数回: 円AoE×2 + 扇AoE×2）
-                // 優先度ルール: TH=HEALER→塔左/TANK→塔右, DPS=MELEE→塔左/RANGED→塔右
-                // 同ペア内で同デバフになる可能性があるため役割で識別
-                'active_HEALER_円AoE': { x: 216, y: 350 },
-                'active_HEALER_扇AoE': { x: 216, y: 350 },
-                'active_TANK_円AoE':   { x: 219, y: 444 },
-                'active_TANK_扇AoE':   { x: 219, y: 444 },
-                'active_MELEE_円AoE':  { x: 375, y: 349 },
-                'active_MELEE_扇AoE':  { x: 375, y: 349 },
-                'active_RANGED_円AoE': { x: 381, y: 442 },
-                'active_RANGED_扇AoE': { x: 381, y: 442 },
-                // 非アクティブ後組（先組アクティブ時: hits 2,4,6,8の後組側）
+                // アクティブ(4): 偶数ヒットは同ペアで同デバフになり得るため役割で識別
+                // TH: HEALER=塔左(上), TANK=塔右(下)
+                // DPS: MELEE=塔左(下), RANGED=塔右(上)
+                'active_HEALER': { x: 216, y: 350 },
+                'active_TANK':   { x: 219, y: 444 },
+                'active_MELEE':  { x: 381, y: 442 },
+                'active_RANGED': { x: 375, y: 349 },
+                // 非アクティブ後組(4): hits 2,8は後組が待機
                 'inactive_TH_円AoE':  { x: 251, y: 194 },
                 'inactive_TH_扇AoE':  { x: 158, y: 301 },
                 'inactive_DPS_円AoE': { x: 341, y: 192 },
                 'inactive_DPS_扇AoE': { x: 433, y: 300 },
-                // 非アクティブ先組（後組アクティブ時: hits 4,6の先組側）
+                // 非アクティブ先組(4): hits 4,6は先組が待機
                 'inactive_TANK_先組':   { x: 237, y: 204 },
-                'inactive_HEALER_先組': { x: 227, y: 346 },
-                'inactive_DPS_先組_0':  { x: 215, y: 439 },
+                'inactive_HEALER_先組': { x: 158, y: 301 },
+                'inactive_DPS_先組_0':  { x: 354, y: 202 },
                 'inactive_DPS_先組_1':  { x: 428, y: 300 },
             },
         };
@@ -849,6 +849,16 @@
                     player.current_turn_active = false;
                 }
             });
+
+            // 先組は3回目の塔完了後（hit 4以降）にhit 8のデバフが付く（偶数: 円AoE/扇AoE）
+            if (currentTowerHit >= 4) {
+                const hit8Assign = towerDebuffAssignments['先組'][4] || {};
+                players.forEach(player => {
+                    if (player.debuff.group === '先組' && hit8Assign[player.id]) {
+                        player.initialMechanic = hit8Assign[player.id];
+                    }
+                });
+            }
         }
 
         function updateTowerStatus() {
