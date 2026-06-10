@@ -239,10 +239,11 @@
             },
         };
 
-        // デバフキー: 'active_TH_頭割り' / 'inactive_DPS_円AoE' など
-        // status = そのヒットでアクティブかどうか（先組/後組の固定名ではない）
-        // 非アクティブの先組は全員 initialMechanic=頭割り で衝突するため
-        // ペアインデックス(0-3)で識別: inactive_TH_頭割り_pair0 など
+        // デバフキー体系:
+        //   active_TH_頭割り / active_DPS_円AoE など → アクティブ時はデバフ種別で識別
+        //   inactive_TH_円AoE / inactive_DPS_扇AoE など → 非アクティブ後組はinitialMechanicで識別
+        //   inactive_TANK_先組 / inactive_HEALER_先組 → 非アクティブ先組TH（TANK/HEALERで区別）
+        //   inactive_DPS_先組_0 / inactive_DPS_先組_1 → 非アクティブ先組DPS（ペア内順序で区別）
         function getPlayerDebuffKey(player) {
             const activeGroup = getTowerGroupByHit(currentTowerHit);
             const isActive = player.debuff.group === activeGroup;
@@ -251,12 +252,17 @@
             if (isActive) {
                 return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
             }
-            const initMec = player.initialMechanic || 'none';
-            if (initMec === '頭割り') {
-                const pairIdx = pairGroups.findIndex(pair => pair.includes(player.id));
-                return `${status}_${roleType}_頭割り_pair${pairIdx}`;
+            // 非アクティブ 先組: ペア内で両名ともinitialMechanic='頭割り'になるため
+            // TANKとHEALERを個別識別、DPSはペア内インデックスで識別
+            if (player.debuff.group === '先組') {
+                if (player.role === 'TANK')   return `${status}_TANK_先組`;
+                if (player.role === 'HEALER') return `${status}_HEALER_先組`;
+                const pairIdx   = pairGroups.findIndex(pair => pair.includes(player.id));
+                const posInPair = pairGroups[pairIdx].indexOf(player.id);
+                return `${status}_DPS_先組_${posInPair}`;
             }
-            return `${status}_${roleType}_${initMec}`;
+            // 非アクティブ 後組: initialMechanicで識別（円AoE / 扇AoE）
+            return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
         }
 
         // デバフ種別ベースのデフォルト配置（ベース座標）
@@ -270,16 +276,16 @@
                 'active_TH_扇AoE':    { x: 218, y: 445 },
                 'active_DPS_頭割り':  { x: 374, y: 355 },
                 'active_DPS_円AoE':   { x: 380, y: 441 },
-                // 非アクティブ後組（先組アクティブ時: hits 1,3）
+                // 非アクティブ後組（先組アクティブ時: hits 1,3,5,7の後組側）
                 'inactive_TH_円AoE':  { x: 258, y: 348 },
                 'inactive_TH_扇AoE':  { x: 219, y: 479 },
                 'inactive_DPS_円AoE': { x: 321, y: 352 },
                 'inactive_DPS_扇AoE': { x: 325, y: 352 },
-                // 非アクティブ先組（後組アクティブ時: hits 5,7）
-                'inactive_TH_頭割り_pair0':  { x: 217, y: 442 },
-                'inactive_TH_頭割り_pair1':  { x: 256, y: 346 },
-                'inactive_DPS_頭割り_pair2': { x: 374, y: 354 },
-                'inactive_DPS_頭割り_pair3': { x: 326, y: 341 },
+                // 非アクティブ先組（後組アクティブ時: hits 5,7の先組側）
+                'inactive_TANK_先組':   { x: 256, y: 346 },
+                'inactive_HEALER_先組': { x: 217, y: 442 },
+                'inactive_DPS_先組_0':  { x: 374, y: 354 },
+                'inactive_DPS_先組_1':  { x: 326, y: 341 },
             },
             even: {
                 // アクティブ組（偶数回: 円AoE×2 + 扇AoE×2）
@@ -287,16 +293,16 @@
                 'active_TH_円AoE':    { x: 219, y: 444 },
                 'active_DPS_扇AoE':   { x: 375, y: 349 },
                 'active_DPS_円AoE':   { x: 381, y: 442 },
-                // 非アクティブ後組（先組アクティブ時: hits 2,8）
+                // 非アクティブ後組（先組アクティブ時: hits 2,4,6,8の後組側）
                 'inactive_TH_円AoE':  { x: 251, y: 194 },
                 'inactive_TH_扇AoE':  { x: 158, y: 301 },
                 'inactive_DPS_円AoE': { x: 341, y: 192 },
                 'inactive_DPS_扇AoE': { x: 433, y: 300 },
-                // 非アクティブ先組（後組アクティブ時: hits 4,6）
-                'inactive_TH_頭割り_pair0':  { x: 227, y: 346 },
-                'inactive_TH_頭割り_pair1':  { x: 237, y: 204 },
-                'inactive_DPS_頭割り_pair2': { x: 215, y: 439 },
-                'inactive_DPS_頭割り_pair3': { x: 428, y: 300 },
+                // 非アクティブ先組（後組アクティブ時: hits 4,6の先組側）
+                'inactive_TANK_先組':   { x: 237, y: 204 },
+                'inactive_HEALER_先組': { x: 227, y: 346 },
+                'inactive_DPS_先組_0':  { x: 215, y: 439 },
+                'inactive_DPS_先組_1':  { x: 428, y: 300 },
             },
         };
 
@@ -729,53 +735,38 @@
         }
 
         function assignTowerGroups() {
-            // KTヤーン式: 先組 = T1+H1+M1+R1 の構成を必ず保証
-            // TH pair[0]=TANK, pair[1]=HEALER
-            //   th0pick=0 → pair0のTANK→先組、pair1のHEALER→先組（T+H確定）
-            //   th0pick=1 → pair0のHEALER→先組、pair1のTANK→先組（H+T確定）
-            // DPS pair[0]=MELEE, pair[1]=RANGED
-            //   mr0pick=0 → pair2のMELEE→先組、pair3のRANGED→先組（M+R確定）
-            //   mr0pick=1 → pair2のRANGED→先組、pair3のMELEE→先組（R+M確定）
-            const thAtoPlayers = [];
-            const mrAtoPlayers = [];
+            // KTヤーン式: ペア単位で先組/後組を決定
+            // 先組 = 頭割りのあるTHペア全員 + 頭割りのあるDPSペア全員（1T+1H+2DPS）
+            // 後組 = 残りのTHペア全員 + 残りのDPSペア全員（1T+1H+2DPS）
 
-            const th0pick = Math.random() < 0.5 ? 0 : 1;
-            for (let i = 0; i < 2; i++) {
-                const pair = pairGroups[i];
-                const sakiIdx = (i === 0) ? th0pick : 1 - th0pick;
-                const sakiP = players.find(p => p.id === pair[sakiIdx]);
-                const atoP  = players.find(p => p.id === pair[1 - sakiIdx]);
-                sakiP.debuff.group = '先組'; sakiP.type = '先組';
-                sakiP.debuff.mechanic = '頭割り'; sakiP.initialMechanic = '頭割り';
-                sakiP.current_turn_active = false;
-                atoP.debuff.group = '後組'; atoP.type = '後組';
-                atoP.debuff.mechanic = ''; atoP.initialMechanic = '';
-                atoP.current_turn_active = false;
-                thAtoPlayers.push(atoP);
-            }
+            // TH: pair0(MT/H1) か pair1(ST/H2) の1ペアをまるごと先組に
+            const thSakiPairIdx = Math.random() < 0.5 ? 0 : 1;
+            const thAtoPairIdx  = 1 - thSakiPairIdx;
 
-            const mr0pick = Math.random() < 0.5 ? 0 : 1;
-            for (let i = 2; i < 4; i++) {
-                const pair = pairGroups[i];
-                const sakiIdx = (i === 2) ? mr0pick : 1 - mr0pick;
-                const sakiP = players.find(p => p.id === pair[sakiIdx]);
-                const atoP  = players.find(p => p.id === pair[1 - sakiIdx]);
-                sakiP.debuff.group = '先組'; sakiP.type = '先組';
-                sakiP.debuff.mechanic = '頭割り'; sakiP.initialMechanic = '頭割り';
-                sakiP.current_turn_active = false;
-                atoP.debuff.group = '後組'; atoP.type = '後組';
-                atoP.debuff.mechanic = ''; atoP.initialMechanic = '';
-                atoP.current_turn_active = false;
-                mrAtoPlayers.push(atoP);
-            }
+            // DPS: pair2(D1/D3) か pair3(D2/D4) の1ペアをまるごと先組に
+            const dpsSakiPairIdx = Math.random() < 0.5 ? 2 : 3;
+            const dpsAtoPairIdx  = dpsSakiPairIdx === 2 ? 3 : 2;
 
-            const thS = shuffle(thAtoPlayers);
-            thS[0].debuff.mechanic = '円AoE'; thS[0].initialMechanic = '円AoE';
-            thS[1].debuff.mechanic = '扇AoE'; thS[1].initialMechanic = '扇AoE';
+            // 先組ペア: 両名に頭割りを付与
+            [thSakiPairIdx, dpsSakiPairIdx].forEach(pairIdx => {
+                pairGroups[pairIdx].forEach(id => {
+                    const p = players.find(pl => pl.id === id);
+                    p.debuff.group = '先組'; p.type = '先組';
+                    p.debuff.mechanic = '頭割り'; p.initialMechanic = '頭割り';
+                    p.current_turn_active = false;
+                });
+            });
 
-            const mrS = shuffle(mrAtoPlayers);
-            mrS[0].debuff.mechanic = '円AoE'; mrS[0].initialMechanic = '円AoE';
-            mrS[1].debuff.mechanic = '扇AoE'; mrS[1].initialMechanic = '扇AoE';
+            // 後組ペア: 1人が円AoE、1人が扇AoE（シャッフルで割り当て）
+            [thAtoPairIdx, dpsAtoPairIdx].forEach(pairIdx => {
+                const members = shuffle(pairGroups[pairIdx].map(id => players.find(p => p.id === id)));
+                members[0].debuff.group = '後組'; members[0].type = '後組';
+                members[0].debuff.mechanic = '円AoE'; members[0].initialMechanic = '円AoE';
+                members[0].current_turn_active = false;
+                members[1].debuff.group = '後組'; members[1].type = '後組';
+                members[1].debuff.mechanic = '扇AoE'; members[1].initialMechanic = '扇AoE';
+                members[1].current_turn_active = false;
+            });
         }
 
         function createTowerDebuffAssignment(groupPlayers, hit) {
