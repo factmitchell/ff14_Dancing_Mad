@@ -246,8 +246,9 @@
         //     同ペア内で同デバフになり得るため役割のみで識別
         //     TH: HEALER=塔左優先, TANK=塔右優先
         //     DPS: MELEE(D1/D2)=塔左優先, RANGED(D3/D4)=塔右優先
-        //   inactive 後組: inactive_TH_円AoE/扇AoE, inactive_DPS_円AoE/扇AoE
-        //   inactive 先組: inactive_TANK_先組, inactive_HEALER_先組, inactive_DPS_先組_0/1
+        //   inactive 奇数: inactive_TANK/HEALER/MELEE/RANGED（全員ロール固定）
+        //   inactive 偶数 後組: inactive_TANK/HEALER/MELEE/RANGED
+        //   inactive 偶数 先組: inactive_TANK_先組/HEALER_先組/DPS_先組_0/1
         function getActiveRole(player) {
             if (player.role === 'TANK')   return 'TANK';
             if (player.role === 'HEALER') return 'HEALER';
@@ -280,28 +281,20 @@
                 // 奇数ヒット: 同ペア内でデバフが必ず異なるためデバフで位置決定
                 return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
             }
-            // 非アクティブ 先組 (hit 4-7):
-            //   TH奇数: hit8デバフで後組TH待機と同じ位置
-            //   TH偶数: 先組TH専用の待機位置(TANK_先組/HEALER_先組)
-            //   DPS: ペア内順序で識別（奇数/偶数で位置が変わる）
+            // 非アクティブ 奇数: 全員ロールで位置決定
+            if (currentTowerHit % 2 === 1) {
+                return `${status}_${getActiveRole(player)}`;
+            }
+            // 非アクティブ 偶数: 先組と後組で待機位置が異なる
             if (player.debuff.group === '先組') {
                 if (player.role === 'TANK' || player.role === 'HEALER') {
-                    if (currentTowerHit % 2 === 1) {
-                        return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
-                    }
                     return `${status}_${player.role}_先組`;
                 }
                 const pairIdx   = pairGroups.findIndex(pair => pair.includes(player.id));
                 const posInPair = pairGroups[pairIdx].indexOf(player.id);
                 return `${status}_DPS_先組_${posInPair}`;
             }
-            // 非アクティブ 後組:
-            //   偶数: 役割で位置決定（TANK/HEALER/MELEE/RANGED）
-            //   奇数: デバフ(initialMechanic)で位置決定
-            if (currentTowerHit % 2 === 0) {
-                return `${status}_${getActiveRole(player)}`;
-            }
-            return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
+            return `${status}_${getActiveRole(player)}`;
         }
 
         // ── 座標定数（ベース600基準）──────────────────────────────────────────
@@ -315,9 +308,9 @@
             O_WAIT_TH_円AoE:  { x: 258, y: 348 },  // 待機TH(円AoE): 後組 & 先組TH共通
             O_WAIT_TH_扇AoE:  { x: 219, y: 479 },  // 待機TH(扇AoE): 後組 & 先組TH共通
             O_WAIT_DPS_円AoE: { x: 321, y: 352 },  // 待機DPS(円AoE): 後組専用
-            O_WAIT_DPS_扇AoE: { x: 325, y: 352 },  // 待機DPS(扇AoE): 後組専用
+            O_WAIT_DPS_扇AoE: { x: 336, y: 329 },  // 待機DPS(扇AoE): 後組専用
             O_先組_DPS_MELEE:  { x: 326, y: 341 },  // 待機DPS先組 MELEE
-            O_先組_DPS_RANGED: { x: 374, y: 354 },  // 待機DPS先組 RANGED
+            O_先組_DPS_RANGED: { x: 336, y: 329 },  // 待機DPS先組 RANGED（近接と視覚的に分離）
             // ── 偶数ヒット ──────────────────────────────────────────────────
             // アクティブ: 位置はデバフで決まる（円AoE=下, 扇AoE=上）
             E_TH_上:  { x: 216, y: 350 },  // TH  扇AoE → 上
@@ -342,12 +335,10 @@
                 'active_TH_扇AoE':    P.O_TH_扇AoE,
                 'active_DPS_頭割り':  P.O_DPS_頭割り,
                 'active_DPS_円AoE':   P.O_DPS_円AoE,
-                'inactive_TH_円AoE':  P.O_WAIT_TH_円AoE,
-                'inactive_TH_扇AoE':  P.O_WAIT_TH_扇AoE,
-                'inactive_DPS_円AoE': P.O_WAIT_DPS_円AoE,
-                'inactive_DPS_扇AoE': P.O_WAIT_DPS_扇AoE,
-                'inactive_DPS_先組_0': P.O_先組_DPS_MELEE,
-                'inactive_DPS_先組_1': P.O_先組_DPS_RANGED,
+                'inactive_TANK':   P.O_WAIT_TH_円AoE,
+                'inactive_HEALER': P.O_WAIT_TH_扇AoE,
+                'inactive_MELEE':  P.O_先組_DPS_MELEE,
+                'inactive_RANGED': P.O_先組_DPS_RANGED,
             },
             even: {
                 // アクティブ(8): デバフで位置決定。同デバフ時はHEALER/MELEEが優先で
