@@ -239,6 +239,69 @@
             },
         };
 
+        // デバフキー: 'active_TH_頭割り' / 'inactive_DPS_円AoE' など
+        // status = そのヒットでアクティブかどうか（先組/後組の固定名ではない）
+        // 非アクティブの先組は全員 initialMechanic=頭割り で衝突するため
+        // ペアインデックス(0-3)で識別: inactive_TH_頭割り_pair0 など
+        function getPlayerDebuffKey(player) {
+            const activeGroup = getTowerGroupByHit(currentTowerHit);
+            const isActive = player.debuff.group === activeGroup;
+            const status = isActive ? 'active' : 'inactive';
+            const roleType = (player.role === 'TANK' || player.role === 'HEALER') ? 'TH' : 'DPS';
+            if (isActive) {
+                return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
+            }
+            const initMec = player.initialMechanic || 'none';
+            if (initMec === '頭割り') {
+                const pairIdx = pairGroups.findIndex(pair => pair.includes(player.id));
+                return `${status}_${roleType}_頭割り_pair${pairIdx}`;
+            }
+            return `${status}_${roleType}_${initMec}`;
+        }
+
+        // デバフ種別ベースのデフォルト配置（ベース座標）
+        // active_*  = アクティブ組（先組後組問わず同じデバフ構造→同じ位置）
+        // inactive_TH/DPS_円AoE/扇AoE = 非アクティブ後組（初期デバフで識別）
+        // inactive_TH/DPS_頭割り_pairN = 非アクティブ先組（全員頭割りのためペア番号で識別）
+        const defaultDebuffPositions = {
+            odd: {
+                // アクティブ組（奇数回: 頭割り×2 + 扇AoE×1 + 円AoE×1）
+                'active_TH_頭割り':   { x: 221, y: 399 },
+                'active_TH_扇AoE':    { x: 218, y: 445 },
+                'active_DPS_頭割り':  { x: 374, y: 355 },
+                'active_DPS_円AoE':   { x: 380, y: 441 },
+                // 非アクティブ後組（先組アクティブ時: hits 1,3）
+                'inactive_TH_円AoE':  { x: 258, y: 348 },
+                'inactive_TH_扇AoE':  { x: 219, y: 479 },
+                'inactive_DPS_円AoE': { x: 321, y: 352 },
+                'inactive_DPS_扇AoE': { x: 325, y: 352 },
+                // 非アクティブ先組（後組アクティブ時: hits 5,7）
+                'inactive_TH_頭割り_pair0':  { x: 217, y: 442 },
+                'inactive_TH_頭割り_pair1':  { x: 256, y: 346 },
+                'inactive_DPS_頭割り_pair2': { x: 374, y: 354 },
+                'inactive_DPS_頭割り_pair3': { x: 326, y: 341 },
+            },
+            even: {
+                // アクティブ組（偶数回: 円AoE×2 + 扇AoE×2）
+                'active_TH_扇AoE':    { x: 216, y: 350 },
+                'active_TH_円AoE':    { x: 219, y: 444 },
+                'active_DPS_扇AoE':   { x: 375, y: 349 },
+                'active_DPS_円AoE':   { x: 381, y: 442 },
+                // 非アクティブ後組（先組アクティブ時: hits 2,8）
+                'inactive_TH_円AoE':  { x: 251, y: 194 },
+                'inactive_TH_扇AoE':  { x: 158, y: 301 },
+                'inactive_DPS_円AoE': { x: 341, y: 192 },
+                'inactive_DPS_扇AoE': { x: 433, y: 300 },
+                // 非アクティブ先組（後組アクティブ時: hits 4,6）
+                'inactive_TH_頭割り_pair0':  { x: 227, y: 346 },
+                'inactive_TH_頭割り_pair1':  { x: 237, y: 204 },
+                'inactive_DPS_頭割り_pair2': { x: 215, y: 439 },
+                'inactive_DPS_頭割り_pair3': { x: 428, y: 300 },
+            },
+        };
+
+        let savedDebuffPositions = {};
+
         function getTowerGroupByHit(hit) {
             return towerHitGroups[Math.min(Math.max(0, hit - 1), 7)] || null;
         }
@@ -263,6 +326,7 @@
                 y,
                 color,
                 debuff: { group: '', number: null, mechanic: '' },
+                initialMechanic: '',
                 type: '無職',
                 order: null,
                 current_turn_active: false
@@ -650,12 +714,14 @@
             players = clonePlayers(initialPlayerState, getScaleFactor());
             players.forEach(player => {
                 player.debuff = { group: '', number: null, mechanic: '' };
+                player.initialMechanic = '';
                 player.type = '無職';
                 player.order = null;
                 player.current_turn_active = false;
             });
             currentTowerHit = 0;
             currentPhase = 'init';
+            savedDebuffPositions = {};
             setPhase('init');
             updateTowerStatus();
             updateStatePanel();
@@ -663,40 +729,53 @@
         }
 
         function assignTowerGroups() {
-            // KTヤーン式: 各ペアで1人が頭割り(→先組)、もう1人がAoE(→後組)
-            // ペアから1人ずつ別グループへ → 各グループ 1T/H + 1T/H + 1M + 1R の構成
-            const thAtoPlayers = []; // TH側の後組プレイヤー (pairGroups[0],[1])
-            const mrAtoPlayers = []; // M+R側の後組プレイヤー (pairGroups[2],[3])
+            // KTヤーン式: 先組 = T1+H1+M1+R1 の構成を必ず保証
+            // TH pair[0]=TANK, pair[1]=HEALER
+            //   th0pick=0 → pair0のTANK→先組、pair1のHEALER→先組（T+H確定）
+            //   th0pick=1 → pair0のHEALER→先組、pair1のTANK→先組（H+T確定）
+            // DPS pair[0]=MELEE, pair[1]=RANGED
+            //   mr0pick=0 → pair2のMELEE→先組、pair3のRANGED→先組（M+R確定）
+            //   mr0pick=1 → pair2のRANGED→先組、pair3のMELEE→先組（R+M確定）
+            const thAtoPlayers = [];
+            const mrAtoPlayers = [];
 
-            pairGroups.forEach((pair, pairIdx) => {
-                const [idA, idB] = pair;
-                const pA = players.find(p => p.id === idA);
-                const pB = players.find(p => p.id === idB);
-                const flip = Math.random() < 0.5;
-                const sakiP = flip ? pA : pB;
-                const atoP  = flip ? pB : pA;
+            const th0pick = Math.random() < 0.5 ? 0 : 1;
+            for (let i = 0; i < 2; i++) {
+                const pair = pairGroups[i];
+                const sakiIdx = (i === 0) ? th0pick : 1 - th0pick;
+                const sakiP = players.find(p => p.id === pair[sakiIdx]);
+                const atoP  = players.find(p => p.id === pair[1 - sakiIdx]);
+                sakiP.debuff.group = '先組'; sakiP.type = '先組';
+                sakiP.debuff.mechanic = '頭割り'; sakiP.initialMechanic = '頭割り';
+                sakiP.current_turn_active = false;
+                atoP.debuff.group = '後組'; atoP.type = '後組';
+                atoP.debuff.mechanic = ''; atoP.initialMechanic = '';
+                atoP.current_turn_active = false;
+                thAtoPlayers.push(atoP);
+            }
 
-                // 先組: 頭割りマーカーが付く
-                sakiP.debuff.group   = '先組'; sakiP.type = '先組';
-                sakiP.debuff.mechanic = '頭割り'; sakiP.current_turn_active = false;
+            const mr0pick = Math.random() < 0.5 ? 0 : 1;
+            for (let i = 2; i < 4; i++) {
+                const pair = pairGroups[i];
+                const sakiIdx = (i === 2) ? mr0pick : 1 - mr0pick;
+                const sakiP = players.find(p => p.id === pair[sakiIdx]);
+                const atoP  = players.find(p => p.id === pair[1 - sakiIdx]);
+                sakiP.debuff.group = '先組'; sakiP.type = '先組';
+                sakiP.debuff.mechanic = '頭割り'; sakiP.initialMechanic = '頭割り';
+                sakiP.current_turn_active = false;
+                atoP.debuff.group = '後組'; atoP.type = '後組';
+                atoP.debuff.mechanic = ''; atoP.initialMechanic = '';
+                atoP.current_turn_active = false;
+                mrAtoPlayers.push(atoP);
+            }
 
-                // 後組: AoEマーカー（種類は後で割り当て）
-                atoP.debuff.group   = '後組'; atoP.type = '後組';
-                atoP.debuff.mechanic = ''; atoP.current_turn_active = false;
-
-                if (pairIdx < 2) { thAtoPlayers.push(atoP); }
-                else             { mrAtoPlayers.push(atoP); }
-            });
-
-            // TH後組2人: 一方が円AoE、他方が扇AoE（片方が円なら他方は扇）
             const thS = shuffle(thAtoPlayers);
-            thS[0].debuff.mechanic = '円AoE';
-            thS[1].debuff.mechanic = '扇AoE';
+            thS[0].debuff.mechanic = '円AoE'; thS[0].initialMechanic = '円AoE';
+            thS[1].debuff.mechanic = '扇AoE'; thS[1].initialMechanic = '扇AoE';
 
-            // M+R後組2人: 同様に円/扇を割り当て
             const mrS = shuffle(mrAtoPlayers);
-            mrS[0].debuff.mechanic = '円AoE';
-            mrS[1].debuff.mechanic = '扇AoE';
+            mrS[0].debuff.mechanic = '円AoE'; mrS[0].initialMechanic = '円AoE';
+            mrS[1].debuff.mechanic = '扇AoE'; mrS[1].initialMechanic = '扇AoE';
         }
 
         function createTowerDebuffAssignment(groupPlayers, hit) {
@@ -767,14 +846,15 @@
                 ? (currentTowerHit % 2 === 1 ? '【奇数/頭割り有】' : '【偶数/頭割り無】')
                 : '';
 
-            // 保存状況: 1〜8 それぞれ ✓ か ─
-            let saved = '';
-            for (let i = 1; i <= 8; i++) {
-                saved += savedPositions[i] ? `<span style="color:#4caf50">✓${i}</span> ` : `<span style="color:#555">─${i}</span> `;
-            }
+            const oddSaved  = savedDebuffPositions['odd']
+                ? '<span style="color:#4caf50">✓奇数(1,3,5,7)</span>'
+                : '<span style="color:#555">─奇数</span>';
+            const evenSaved = savedDebuffPositions['even']
+                ? '<span style="color:#4caf50">✓偶数(2,4,6,8)</span>'
+                : '<span style="color:#555">─偶数</span>';
 
             el.innerHTML = `塔: <strong>${currentTowerHit}/8</strong> ${groupText} ${roundType}
-                &nbsp;|&nbsp; 保存: ${saved}`;
+                &nbsp;|&nbsp; 保存: ${oddSaved} ${evenSaved}`;
         }
 
         function setTowerHit(hit) {
@@ -795,31 +875,33 @@
                 return;
             }
             const sf = getScaleFactor();
-            savedPositions[currentTowerHit] = {};
+            const roundType  = currentTowerHit % 2 === 1 ? 'odd' : 'even';
+            const roundLabel = roundType === 'odd' ? '奇数' : '偶数';
+
+            if (!savedDebuffPositions[roundType]) savedDebuffPositions[roundType] = {};
             players.forEach(p => {
-                // ベース座標で保存（スケール変更に対応）
-                savedPositions[currentTowerHit][p.id] = {
-                    x: Math.round(p.x / sf),
-                    y: Math.round(p.y / sf)
+                const key = getPlayerDebuffKey(p);
+                savedDebuffPositions[roundType][key] = {
+                    x: Math.round(p.x / sf), y: Math.round(p.y / sf)
                 };
             });
             updateTowerStatus();
-            const savedCount = Object.keys(savedPositions).length;
-            updateLog(`[${currentTowerHit}回目] 配置を保存しました。(保存済み: ${savedCount}/8 回)\n` +
-                `保存した回: ${Object.keys(savedPositions).sort((a,b)=>a-b).join(', ')} 回目`);
+            const savedTypes = Object.keys(savedDebuffPositions).map(r => r === 'odd' ? '奇数' : '偶数').join(', ');
+            updateLog(`[${currentTowerHit}回目 / ${roundLabel}回] デバフ別配置を保存しました。\n` +
+                `同じパターン（${roundLabel}回）の全ての回に適用されます。保存済み: ${savedTypes}`);
         }
 
         function exportPositions() {
-            const hits = Object.keys(savedPositions).map(Number).sort((a, b) => a - b);
-            if (hits.length === 0) {
-                updateLog('保存済みの配置がありません。先に各回を配置して「位置保存」してください。');
+            const rounds = Object.keys(savedDebuffPositions);
+            if (rounds.length === 0) {
+                updateLog('保存済みの配置がありません。先に配置して「位置保存」してください。');
                 return;
             }
-            let code = 'const defaultPositions = {\n';
-            hits.forEach(hit => {
-                code += `    ${hit}: {\n`;
-                Object.entries(savedPositions[hit]).forEach(([id, pos]) => {
-                    code += `        ${id}: { x: ${pos.x}, y: ${pos.y} },\n`;
+            let code = 'const defaultDebuffPositions = {\n';
+            rounds.forEach(roundType => {
+                code += `    ${roundType}: {\n`;
+                Object.entries(savedDebuffPositions[roundType]).forEach(([key, pos]) => {
+                    code += `        '${key}': { x: ${pos.x}, y: ${pos.y} },\n`;
                 });
                 code += '    },\n';
             });
@@ -830,14 +912,16 @@
             panel.style.display = 'block';
             textarea.value = code;
             textarea.select();
-            updateLog(`${hits.length}/8 回分の座標を出力しました。テキストをコピーして\nコード内の defaultPositions に貼り付けてください。`);
+            const labels = rounds.map(r => r === 'odd' ? '奇数' : '偶数').join(', ');
+            updateLog(`[${labels}回] デバフ別座標を出力しました。\nコード内の defaultDebuffPositions に貼り付けてください。`);
         }
 
         function generateDebuff() {
             players = clonePlayers(initialPlayerState, getScaleFactor());
-            savedPositions = {}; // グループが変わるので保存をリセット
+            // savedDebuffPositions はデバフ種別で保存しているため生成毎にリセットしない
             players.forEach(player => {
                 player.debuff = { group: '', number: null, mechanic: '' };
+                player.initialMechanic = '';
                 player.order = null;
                 player.current_turn_active = false;
                 player.type = '無職';
@@ -871,29 +955,29 @@
                 return;
             }
 
-            const positions = savedPositions[currentTowerHit] || defaultPositions[currentTowerHit];
-            if (!positions) {
-                const missing = [];
-                for (let i = 1; i <= 8; i++) {
-                    if (!savedPositions[i] && !defaultPositions[i]) missing.push(i);
-                }
+            const sf = getScaleFactor();
+            const roundType  = currentTowerHit % 2 === 1 ? 'odd' : 'even';
+            const roundLabel = roundType === 'odd' ? '奇数' : '偶数';
+            const debuffPosMap = savedDebuffPositions[roundType] || defaultDebuffPositions[roundType];
+
+            if (!debuffPosMap) {
                 updateLog(
-                    `[${currentTowerHit}回目] 保存済み配置がありません。\n` +
-                    `手順: ドラッグで配置 → 「位置保存」→ 「座標出力」でコードを取得\n` +
-                    `未設定の回: ${missing.join(', ')} 回目`
+                    `[${currentTowerHit}回目 / ${roundLabel}回] 保存済み配置がありません。\n` +
+                    `手順: ドラッグで配置 → 「位置保存」\n` +
+                    `先組アクティブ時(hits 1,3/2,8)と後組アクティブ時(hits 5,7/4,6)で各1回ずつ保存してください。`
                 );
                 return;
             }
 
-            const sf = getScaleFactor();
+            let aligned = 0;
             players.forEach(p => {
-                const pos = positions[p.id];
-                // ベース座標で保存されているので現在のスケールを掛けて適用
-                if (pos) { p.x = pos.x * sf; p.y = pos.y * sf; }
+                const key = getPlayerDebuffKey(p);
+                const pos = debuffPosMap[key];
+                if (pos) { p.x = pos.x * sf; p.y = pos.y * sf; aligned++; }
             });
 
-            const src = savedPositions[currentTowerHit] ? 'セッション保存' : 'defaultPositions';
-            updateLog(`[${currentTowerHit}回目] 配置を適用しました（ソース: ${src}）`);
+            const src = savedDebuffPositions[roundType] ? 'セッション保存' : 'defaultDebuffPositions';
+            updateLog(`[${currentTowerHit}回目 / ${roundLabel}回] デバフ別配置を適用しました（${aligned}/8人、ソース: ${src}）`);
             updateStatePanel();
             drawField();
         }
@@ -978,23 +1062,23 @@
             html += `<div>塔: ${currentTowerHit} / 8回目 &nbsp; ${activeGroup ? `<span style="color:#ffd700">担当: ${activeGroup}</span>` : ''} &nbsp; ${currentTowerHit > 0 ? roundType : ''}</div>`;
             html += '<div style="margin-top: 8px;">';
             pairGroups.forEach((pair, pairIndex) => {
-                const pGroup = players.find(p => p.id === pair[0])?.debuff.group;
-                const isActive = pGroup === activeGroup && currentTowerHit > 0;
-                const bg = isActive ? 'background:rgba(255,215,0,0.12);border-left:3px solid #ffd700;padding-left:4px;' : '';
-                html += `<div style="margin-top:6px;${bg}">`;
-                html += `<span style="color:${pairColors[pairIndex]};font-weight:bold">${pairLabels[pairIndex]}</span>`;
-                html += pGroup ? ` → <span style="color:${pGroup === '先組' ? '#00e5ff' : '#ff8a65'}">${pGroup}</span>` : '';
-                html += `</div>`;
+                html += `<div style="margin-top:6px;"><span style="color:${pairColors[pairIndex]};font-weight:bold">${pairLabels[pairIndex]}</span></div>`;
                 pair.forEach(id => {
                     const player = players.find(p => p.id === id);
                     if (!player) return;
                     const color = getPairColor(player.id);
-                    const mec = player.debuff.mechanic;
-                    const emoji = getMechanicEmoji(mec);
-                    const mecColor = mec === '頭割り' ? '#ff6b6b' : mec === '扇AoE' ? '#ffd700' : mec === '円AoE' ? '#64b5f6' : '#aaa';
-                    html += `&nbsp;&nbsp;<span style="color:${color};font-weight:bold">${player.id}</span>: `;
-                    html += mec ? `<span style="color:${mecColor}">${mec} ${emoji}</span>` : `<span style="color:#888">${player.debuff.group || '未割当'}</span>`;
-                    html += `<br>`;
+                    const isActivePlayer = player.debuff.group === activeGroup && currentTowerHit > 0;
+                    const displayMec = isActivePlayer ? player.debuff.mechanic : player.initialMechanic;
+                    const emoji = getMechanicEmoji(displayMec);
+                    const mecColor = displayMec === '頭割り' ? '#ff6b6b' : displayMec === '扇AoE' ? '#ffd700' : displayMec === '円AoE' ? '#64b5f6' : '#aaa';
+                    const groupColor = player.debuff.group === '先組' ? '#00e5ff' : '#ff8a65';
+                    const groupLabel = player.debuff.group
+                        ? `<span style="color:${groupColor}">${player.debuff.group}</span>`
+                        : '未割当';
+                    const activeBorder = isActivePlayer ? 'border-left:3px solid #ffd700;padding-left:4px;' : '';
+                    html += `<div style="${activeBorder}">&nbsp;&nbsp;<span style="color:${color};font-weight:bold">${player.id}</span>: ${groupLabel}`;
+                    html += displayMec ? ` <span style="color:${mecColor}">${displayMec} ${emoji}</span>` : '';
+                    html += `</div>`;
                 });
             });
             html += '</div>';
