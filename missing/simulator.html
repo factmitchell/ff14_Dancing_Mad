@@ -263,20 +263,20 @@
             const roleType = (player.role === 'TANK' || player.role === 'HEALER') ? 'TH' : 'DPS';
             if (isActive) {
                 if (currentTowerHit % 2 === 0) {
-                    // 偶数ヒット: デバフで位置決定（円AoE=下、扇AoE=上）
-                    // 同ペアで同デバフ衝突時は優先役(HEALER/MELEE)が自身のデバフ位置を取り
-                    // 従属役(TANK/RANGED)はパートナーの反対位置へ
+                    // 偶数ヒット: 円AoE=下、扇AoE=上。塔左優先: HEALER(TH), MELEE(DPS)
+                    // 衝突時(同デバフ): 優先ロール→LEFT塔、従属ロール→RIGHT塔（同上下）
                     const role = getActiveRole(player);
-                    if (role === 'HEALER' || role === 'MELEE') {
-                        return `${status}_${role}_${player.debuff.mechanic || 'none'}`;
-                    }
-                    // TANK/RANGED: パートナー(HEALER/MELEE)の逆デバフキー
+                    const mec  = player.debuff.mechanic || 'none';
                     const pairIdx   = pairGroups.findIndex(pair => pair.includes(player.id));
                     const partnerId = pairGroups[pairIdx].find(id => id !== player.id);
                     const partner   = players.find(p => p.id === partnerId);
-                    const opp = { '円AoE': '扇AoE', '扇AoE': '円AoE' };
-                    const oppMec = opp[partner?.debuff.mechanic] || (player.debuff.mechanic || 'none');
-                    return `${status}_${role}_${oppMec}`;
+                    const isCollision = mec === partner?.debuff.mechanic;
+                    // HEALER → 常にLEFT, TANK → 衝突時のみRIGHT
+                    // MELEE  → 衝突時のみLEFT, RANGED → 常にRIGHT
+                    const goLeft = (role === 'HEALER') ||
+                                   (role === 'TANK'   && !isCollision) ||
+                                   (role === 'MELEE'  && isCollision);
+                    return `${status}_${goLeft ? 'LEFT' : 'RIGHT'}_${mec}`;
                 }
                 // 奇数ヒット: 同ペア内でデバフが必ず異なるためデバフで位置決定
                 return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
@@ -341,16 +341,11 @@
                 'inactive_RANGED': P.O_先組_DPS_RANGED,
             },
             even: {
-                // アクティブ(8): デバフで位置決定。同デバフ時はHEALER/MELEEが優先で
-                // TANK/RANGEDはパートナーの逆デバフキーへ → P参照で同位置が一目瞭然
-                'active_HEALER_扇AoE': P.E_TH_上,   // 扇AoE→上
-                'active_HEALER_円AoE': P.E_TH_下,   // 円AoE→下
-                'active_TANK_扇AoE':   P.E_TH_上,   // = HEALER_扇AoE（TANK同位置）
-                'active_TANK_円AoE':   P.E_TH_下,   // = HEALER_円AoE（TANK同位置）
-                'active_MELEE_扇AoE':  P.E_DPS_上,  // 扇AoE→上
-                'active_MELEE_円AoE':  P.E_DPS_下,  // 円AoE→下
-                'active_RANGED_扇AoE': P.E_DPS_上,  // = MELEE_扇AoE（RANGED同位置）
-                'active_RANGED_円AoE': P.E_DPS_下,  // = MELEE_円AoE（RANGED同位置）
+                // アクティブ(4): LEFT/RIGHT塔 × 上/下。円AoE=下、扇AoE=上
+                'active_LEFT_扇AoE':  P.E_TH_上,
+                'active_LEFT_円AoE':  P.E_TH_下,
+                'active_RIGHT_扇AoE': P.E_DPS_上,
+                'active_RIGHT_円AoE': P.E_DPS_下,
                 // 待機(4): 後組 → 役割で識別
                 'inactive_TANK':   P.E_WAIT_TANK,
                 'inactive_HEALER': P.E_WAIT_HEALER,
