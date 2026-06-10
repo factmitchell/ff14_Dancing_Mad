@@ -269,11 +269,15 @@
                 return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
             }
             // 非アクティブ 先組 (hit 4-7):
-            //   TH: hit8のデバフ(initialMechanic更新済)で後組TH待機と同じ場所を使う
+            //   TH奇数: hit8デバフで後組TH待機と同じ位置
+            //   TH偶数: 先組TH専用の待機位置(TANK_先組/HEALER_先組)
             //   DPS: ペア内順序で識別（奇数/偶数で位置が変わる）
             if (player.debuff.group === '先組') {
                 if (player.role === 'TANK' || player.role === 'HEALER') {
-                    return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
+                    if (currentTowerHit % 2 === 1) {
+                        return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
+                    }
+                    return `${status}_${player.role}_先組`;
                 }
                 const pairIdx   = pairGroups.findIndex(pair => pair.includes(player.id));
                 const posInPair = pairGroups[pairIdx].indexOf(player.id);
@@ -283,48 +287,62 @@
             return `${status}_${roleType}_${player.initialMechanic || 'none'}`;
         }
 
-        // デバフ種別ベースのデフォルト配置（ベース座標）
-        // active_*  = アクティブ組（先組後組問わず同じデバフ構造→同じ位置）
-        // inactive_TH/DPS_円AoE/扇AoE = 非アクティブ後組（初期デバフで識別）
-        // inactive_TH/DPS_頭割り_pairN = 非アクティブ先組（全員頭割りのためペア番号で識別）
+        // ── 座標定数（ベース600基準）──────────────────────────────────────────
+        // 奇数8か所 + 偶数8か所 = 合計16か所
+        const P = {
+            // ── 奇数ヒット ──────────────────────────────────────────────────
+            O_TH_頭割り:     { x: 221, y: 399 },  // TH 頭割りプレイヤー
+            O_TH_扇AoE:      { x: 218, y: 445 },  // TH 扇AoEプレイヤー
+            O_DPS_頭割り:    { x: 374, y: 355 },  // DPS 頭割りプレイヤー
+            O_DPS_円AoE:     { x: 380, y: 441 },  // DPS 円AoEプレイヤー
+            O_WAIT_TH_円AoE:  { x: 258, y: 348 },  // 待機TH(円AoE): 後組 & 先組TH共通
+            O_WAIT_TH_扇AoE:  { x: 219, y: 479 },  // 待機TH(扇AoE): 後組 & 先組TH共通
+            O_WAIT_DPS_円AoE: { x: 321, y: 352 },  // 待機DPS(円AoE): 後組専用
+            O_WAIT_DPS_扇AoE: { x: 325, y: 352 },  // 待機DPS(扇AoE): 後組専用
+            O_先組_DPS_MELEE:  { x: 326, y: 341 },  // 待機DPS先組 MELEE
+            O_先組_DPS_RANGED: { x: 374, y: 354 },  // 待機DPS先組 RANGED
+            // ── 偶数ヒット ──────────────────────────────────────────────────
+            E_HEALER: { x: 216, y: 350 },  // HEALER 塔左(上)
+            E_TANK:   { x: 219, y: 444 },  // TANK   塔右(下)
+            E_MELEE:  { x: 381, y: 442 },  // MELEE  塔左(下)
+            E_RANGED: { x: 375, y: 349 },  // RANGED 塔右(上)
+            E_WAIT_TH_円AoE:  { x: 251, y: 194 },  // 待機TH(円AoE): 後組専用
+            E_WAIT_TH_扇AoE:  { x: 158, y: 301 },  // 待機TH(扇AoE): 後組 & 先組HEALER共通
+            E_WAIT_DPS_円AoE: { x: 341, y: 192 },  // 待機DPS(円AoE): 後組専用
+            E_WAIT_DPS_扇AoE: { x: 433, y: 300 },  // 待機DPS(扇AoE): 後組専用
+            E_先組_TANK:  { x: 237, y: 204 },  // 待機TANK先組
+            // 先組HEALERはE_WAIT_TH_扇AoEと同座標のため定数共有
+            E_先組_DPS_0: { x: 354, y: 202 },  // 待機DPS先組 ペア内index0
+            E_先組_DPS_1: { x: 428, y: 300 },  // 待機DPS先組 ペア内index1
+        };
+
+        // デフォルト配置（P定数への参照）
         const defaultDebuffPositions = {
             odd: {
-                // アクティブ(4): 奇数ヒットは同ペア内でデバフが必ず異なるためデバフで識別
-                'active_TH_頭割り':   { x: 221, y: 399 },
-                'active_TH_扇AoE':    { x: 218, y: 445 },
-                'active_DPS_頭割り':  { x: 374, y: 355 },
-                'active_DPS_円AoE':   { x: 380, y: 441 },
-                // 非アクティブ後組(4): hits 1,3は後組が待機
-                'inactive_TH_円AoE':  { x: 258, y: 348 },
-                'inactive_TH_扇AoE':  { x: 219, y: 479 },
-                'inactive_DPS_円AoE': { x: 321, y: 352 },
-                'inactive_DPS_扇AoE': { x: 325, y: 352 },
-                // 非アクティブ先組(4): hits 5,7は先組が待機
-                // TH先組はhit8デバフで inactive_TH_* を使うためここは参照されない
-                'inactive_TANK_先組':   { x: 256, y: 346 },
-                'inactive_HEALER_先組': { x: 217, y: 442 },
-                // DPS先組: MELEE(index0)→下, RANGED(index1)→上
-                'inactive_DPS_先組_0':  { x: 326, y: 341 },
-                'inactive_DPS_先組_1':  { x: 374, y: 354 },
+                'active_TH_頭割り':   P.O_TH_頭割り,
+                'active_TH_扇AoE':    P.O_TH_扇AoE,
+                'active_DPS_頭割り':  P.O_DPS_頭割り,
+                'active_DPS_円AoE':   P.O_DPS_円AoE,
+                'inactive_TH_円AoE':  P.O_WAIT_TH_円AoE,
+                'inactive_TH_扇AoE':  P.O_WAIT_TH_扇AoE,
+                'inactive_DPS_円AoE': P.O_WAIT_DPS_円AoE,
+                'inactive_DPS_扇AoE': P.O_WAIT_DPS_扇AoE,
+                'inactive_DPS_先組_0': P.O_先組_DPS_MELEE,
+                'inactive_DPS_先組_1': P.O_先組_DPS_RANGED,
             },
             even: {
-                // アクティブ(4): 偶数ヒットは同ペアで同デバフになり得るため役割で識別
-                // TH: HEALER=塔左(上), TANK=塔右(下)
-                // DPS: MELEE=塔左(下), RANGED=塔右(上)
-                'active_HEALER': { x: 216, y: 350 },
-                'active_TANK':   { x: 219, y: 444 },
-                'active_MELEE':  { x: 381, y: 442 },
-                'active_RANGED': { x: 375, y: 349 },
-                // 非アクティブ後組(4): hits 2,8は後組が待機
-                'inactive_TH_円AoE':  { x: 251, y: 194 },
-                'inactive_TH_扇AoE':  { x: 158, y: 301 },
-                'inactive_DPS_円AoE': { x: 341, y: 192 },
-                'inactive_DPS_扇AoE': { x: 433, y: 300 },
-                // 非アクティブ先組(4): hits 4,6は先組が待機
-                'inactive_TANK_先組':   { x: 237, y: 204 },
-                'inactive_HEALER_先組': { x: 158, y: 301 },
-                'inactive_DPS_先組_0':  { x: 354, y: 202 },
-                'inactive_DPS_先組_1':  { x: 428, y: 300 },
+                'active_HEALER': P.E_HEALER,
+                'active_TANK':   P.E_TANK,
+                'active_MELEE':  P.E_MELEE,
+                'active_RANGED': P.E_RANGED,
+                'inactive_TH_円AoE':  P.E_WAIT_TH_円AoE,
+                'inactive_TH_扇AoE':  P.E_WAIT_TH_扇AoE,
+                'inactive_DPS_円AoE': P.E_WAIT_DPS_円AoE,
+                'inactive_DPS_扇AoE': P.E_WAIT_DPS_扇AoE,
+                'inactive_TANK_先組':   P.E_先組_TANK,
+                'inactive_HEALER_先組': P.E_WAIT_TH_扇AoE,  // 後組TH扇AoE待機と同座標
+                'inactive_DPS_先組_0':  P.E_先組_DPS_0,
+                'inactive_DPS_先組_1':  P.E_先組_DPS_1,
             },
         };
 
