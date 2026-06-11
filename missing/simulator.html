@@ -136,8 +136,8 @@
 
     <div id="controls">
         <button id="btn-init" class="active">初期配置</button>
-        <button id="btn-odd" style="display:none">奇数回</button>
-        <button id="btn-even" style="display:none">偶数回</button>
+        <button id="btn-odd">奇数回</button>
+        <button id="btn-even">偶数回</button>
         <button id="btn-generate">開始</button>
         <button id="btn-prev-hit">前の塔</button>
         <button id="btn-next-hit">次の塔</button>
@@ -575,7 +575,11 @@
 
             drawGimmickGuides();
             drawTowerEffects(getTowerEffects());
-            drawEffects(getPhaseEffects());
+            // drawEffects は 'init' 時に [] を返すため実質 no-op。
+            // odd/even 配置確認モードでは drawTowerEffects が正しいエフェクトを描画するため不要
+            if (currentPhase === 'init') {
+                drawEffects(getPhaseEffects());
+            }
             updateCoordsPanel();
 
             players.forEach(player => {
@@ -1251,6 +1255,27 @@
             updateLog(`[${labels}回] デバフ別座標を出力しました。\nコード内の defaultDebuffPositions に貼り付けてください。`);
         }
 
+        // 配置確認モード: 練習モードに影響しない独立したデバフ生成
+        function generatePositionCheckDebuffs(phase) {
+            players = clonePlayers(initialPlayerState, getScaleFactor());
+            players.forEach(player => {
+                player.debuff = { group: '', number: null, mechanic: '' };
+                player.initialMechanic = '';
+                player.order = null;
+                player.current_turn_active = false;
+                player.type = '無職';
+            });
+
+            assignTowerGroups();
+            generateTowerDebuffAssignments();
+
+            currentTowerHit = 0;
+            // 奇数回 → hit 1、偶数回 → hit 2 を表示
+            setTowerHit(phase === 'odd' ? 1 : 2);
+            setPhase(phase);
+            updateLog(`[配置確認] ${phase === 'odd' ? '奇数' : '偶数'}回のデバフを生成しました。プレイヤーを自由に移動して配置を確認してください。`);
+        }
+
         function generateDebuff() {
             players = clonePlayers(initialPlayerState, getScaleFactor());
             players.forEach(player => {
@@ -1455,8 +1480,14 @@
         };
 
         buttons['init'].addEventListener('click', () => setPhase('init'));
-        buttons['odd'].addEventListener('click', () => setPhase('odd'));
-        buttons['even'].addEventListener('click', () => setPhase('even'));
+        buttons['odd'].addEventListener('click', () => {
+            if (practiceMode) return;
+            generatePositionCheckDebuffs('odd');
+        });
+        buttons['even'].addEventListener('click', () => {
+            if (practiceMode) return;
+            generatePositionCheckDebuffs('even');
+        });
         document.getElementById('btn-generate').addEventListener('click', generateDebuff);
         document.getElementById('btn-save-pos').addEventListener('click', saveCurrentPositions);
         document.getElementById('btn-export').addEventListener('click', exportPositions);
