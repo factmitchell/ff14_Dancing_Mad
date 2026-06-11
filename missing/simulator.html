@@ -678,17 +678,23 @@
                 }
 
                 // emoji/label: 練習モードでは hit1=全員表示, hit2+=アクティブのみ
+                // hard: 塔切り替え時3秒のみ表示
                 const showMarker = !practiceMode ||
                                    currentTowerHit === 1 ||
                                    player.debuff.group === activeGroup;
-                if (showMarker) {
+                const showEmoji  = showMarker &&
+                                   (!practiceMode ||
+                                    practiceDifficulty === 'easy' ||
+                                    hardIconVisible ||
+                                    practiceChecked);
+                if (showEmoji) {
                     const emoji = getMechanicEmoji(player.debuff.mechanic || player.type);
                     if (emoji) {
                         ctx.fillStyle = '#fff';
-                        ctx.font = scaledFont(14);
+                        ctx.font = scaledFont(practiceMode ? 28 : 14);
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText(emoji, player.x, player.y - s(22));
+                        ctx.fillText(emoji, player.x, player.y - s(practiceMode ? 30 : 22));
                     }
                 }
 
@@ -1267,6 +1273,19 @@
                 &nbsp;|&nbsp; 保存: ${oddSaved} ${evenSaved}`;
         }
 
+        let hardIconVisible = false;
+        let hardIconTimer   = null;
+
+        function showHardIcons() {
+            if (hardIconTimer) clearTimeout(hardIconTimer);
+            hardIconVisible = true;
+            drawField();
+            hardIconTimer = setTimeout(() => {
+                hardIconVisible = false;
+                drawField();
+            }, 3000);
+        }
+
         let towerPopupTimer = null;
         function showTowerPopup(hit) {
             const el = document.getElementById('tower-popup');
@@ -1290,6 +1309,7 @@
                 updatePracticeStatus();
                 if (currentTowerHit > 0 && currentTowerHit !== prev) {
                     showTowerPopup(currentTowerHit);
+                    if (practiceDifficulty === 'hard') showHardIcons();
                 }
             }
             updateTowerStatus();
@@ -1528,8 +1548,14 @@
                         ? `<span style="color:${groupColor}">${player.debuff.group}</span>`
                         : '未割当';
                     const activeBorder = isActivePlayer ? 'border-left:3px solid #ffd700;padding-left:4px;' : '';
+                    // hard mode: デバフ情報をマスク
+                    const maskDebuff = practiceMode && practiceDifficulty === 'hard' && !practiceChecked;
                     html += `<div style="${activeBorder}">&nbsp;&nbsp;<span style="color:${color};font-weight:bold">${player.id}</span>: ${groupLabel}`;
-                    html += displayMec ? ` <span style="color:${mecColor}">${displayMec} ${emoji}</span>` : '';
+                    if (displayMec && !maskDebuff) {
+                        html += ` <span style="color:${mecColor}">${displayMec} ${emoji}</span>`;
+                    } else if (displayMec && maskDebuff) {
+                        html += ` <span style="color:#444">██</span>`;
+                    }
                     html += `</div>`;
                 });
             });
