@@ -109,6 +109,14 @@
         }
         .job-btn:hover { background: #444; }
         .job-btn.selected { background: #1a5a1a; color: #fff; border-color: #7fff7f; }
+        .diff-btn {
+            background: #333; color: #ccc; border: 1px solid #555;
+            padding: 4px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: bold; transition: 0.2s;
+        }
+        .diff-btn:hover { background: #444; }
+        .diff-btn.easy.selected  { background: #1a3a5a; color: #fff; border-color: #64b5f6; }
+        .diff-btn.hard.selected  { background: #5a1a1a; color: #fff; border-color: #ff6b6b; }
         #practice-status { font-size: 12px; color: #aaa; width: 100%; }
         @keyframes feedbackPop {
             0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
@@ -160,6 +168,11 @@
             <button class="job-btn" data-job="D2">D2</button>
             <button class="job-btn" data-job="D3">D3</button>
             <button class="job-btn" data-job="D4">D4</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+            <span style="font-size:12px;color:#888;">難易度:</span>
+            <button class="diff-btn easy selected" id="btn-diff-easy" data-diff="easy">Easy</button>
+            <button class="diff-btn hard"           id="btn-diff-hard" data-diff="hard">Hard</button>
         </div>
         <div id="practice-status"></div>
     </div>
@@ -574,7 +587,10 @@
             ctx.fillText('D', s(35), centerY);
 
             drawGimmickGuides();
-            drawTowerEffects(getTowerEffects());
+            // hard mode: hide AoE effects until answer checked
+            if (!practiceMode || practiceDifficulty === 'easy' || practiceChecked) {
+                drawTowerEffects(getTowerEffects());
+            }
             // drawEffects は 'init' 時に [] を返すため実質 no-op。
             // odd/even 配置確認モードでは drawTowerEffects が正しいエフェクトを描画するため不要
             if (currentPhase === 'init') {
@@ -582,15 +598,41 @@
             }
             updateCoordsPanel();
 
+            // ── 練習モード用: ペア情報 ─────────────────────────────────────────
+            const activeGroup = getTowerGroupByHit(currentTowerHit);
+            let practicePairId = null;
+            if (practiceMode && practiceJob) {
+                const pairIdx = pairGroups.findIndex(pair => pair.includes(practiceJob));
+                if (pairIdx >= 0) {
+                    practicePairId = pairGroups[pairIdx].find(id => id !== practiceJob);
+                }
+            }
+
             players.forEach(player => {
-                const isPracticeTarget = practiceMode && player.id === practiceJob;
-                const alpha = practiceMode ? (isPracticeTarget ? 1.0 : 0.25) : 1.0;
-                ctx.globalAlpha = alpha;
+                if (!practiceMode) {
+                    ctx.globalAlpha = 1.0;
+                } else {
+                    const isPracticeTarget = player.id === practiceJob;
+                    const isActivePlayer   = player.debuff.group === activeGroup;
+                    // hit1(開始): ペアもくっきり。hit2+: アクティブ4人くっきり
+                    const isBright = isPracticeTarget || isActivePlayer ||
+                                     (currentTowerHit === 1 && player.id === practicePairId);
+                    ctx.globalAlpha = isBright ? 1.0 : 0.25;
+                }
 
                 ctx.beginPath();
                 ctx.arc(player.x, player.y, s(18), 0, Math.PI * 2);
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
                 ctx.fill();
+
+                // easy mode: ペアパートナーに金リング
+                if (practiceMode && practiceDifficulty === 'easy' &&
+                    player.id === practicePairId && player.debuff.group === activeGroup) {
+                    ctx.strokeStyle = '#ffd700';
+                    ctx.lineWidth = s(5);
+                    ctx.stroke();
+                }
+
                 ctx.strokeStyle = getPairColor(player.id);
                 ctx.lineWidth = s(4);
                 ctx.stroke();
@@ -610,7 +652,11 @@
                     ctx.fill();
                 }
 
-                if (!practiceMode || isPracticeTarget) {
+                // emoji/label: 練習モードでは hit1=全員表示, hit2+=アクティブのみ
+                const showMarker = !practiceMode ||
+                                   currentTowerHit === 1 ||
+                                   player.debuff.group === activeGroup;
+                if (showMarker) {
                     const emoji = getMechanicEmoji(player.debuff.mechanic || player.type);
                     if (emoji) {
                         ctx.fillStyle = '#fff';
@@ -621,7 +667,7 @@
                     }
                 }
 
-                if (!practiceMode || isPracticeTarget) {
+                if (showMarker) {
                     const labelText = player.id;
                     const labelY = player.y + s(30);
                     ctx.font = scaledFont(10, 'bold');
@@ -811,6 +857,7 @@
         let practiceChecked  = false;
         let practiceScores   = {};    // { hitNum: 'correct'|'wrong' }
         let practiceFeedbackTimer = null;
+        let practiceDifficulty = 'easy'; // 'easy' | 'hard'
 
         function getPracticeZones() {
             if (currentTowerHit === 0) return [];
@@ -1501,6 +1548,15 @@
 
         document.querySelectorAll('.job-btn').forEach(btn => {
             btn.addEventListener('click', () => setPracticeJob(btn.dataset.job));
+        });
+
+        document.querySelectorAll('.diff-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                practiceDifficulty = btn.dataset.diff;
+                document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                drawField();
+            });
         });
 
         const fieldSizeSlider = document.getElementById('fieldSizeSlider');
