@@ -635,7 +635,8 @@ function initStaticField(){
         el.className = "tower";
         el.style.left = t.x + "px";
         el.style.top  = t.y + "px";
-        el.textContent = t.arrow;
+        el.dataset.arrow = t.arrow;
+        el.textContent = "";
         f.appendChild(el);
     });
 
@@ -869,10 +870,41 @@ const alwaysShowImage =
 enableAllButton.addEventListener("click", () => setAllPatterns(true));
 disableAllButton.addEventListener("click", () => setAllPatterns(false));
 
+/* ── タワー矢印表示制御 ─────────────────────────────────────── */
+
+let resultShown    = false;
+let lastResultCorrect = false;
+
+function updateArrowVisibility(){
+    const towers = field.querySelectorAll(".tower");
+    if(alwaysShowImage.checked){
+        // チェックON: 全タワーに矢印を表示
+        towers.forEach(el => el.textContent = el.dataset.arrow);
+        return;
+    }
+    // デフォルト: 全タワーの矢印を非表示
+    towers.forEach(el => el.textContent = "");
+    // 失敗時のみ: 正解ターゲット位置のタワーに矢印を表示
+    if(resultShown && !lastResultCorrect){
+        roles.forEach(role => {
+            towers.forEach(el => {
+                const d = Math.hypot(
+                    parseFloat(el.style.left) - role.targetX,
+                    parseFloat(el.style.top)  - role.targetY
+                );
+                if(d <= 5) el.textContent = el.dataset.arrow;
+            });
+        });
+    }
+}
+
 function showResultImage(){
     field.classList.add("show-correct");
+    resultShown = true;
+    lastResultCorrect = roles.every((role, index) => isCorrectPlacement(role, index));
     recordPatternResult();
     updateLog();
+    updateArrowVisibility();
 
     if(alwaysShowImage.checked){
         imageMessage.textContent = "常に正解画像を表示します";
@@ -888,6 +920,8 @@ function hideResultImage(){
 function resetGame(){
     field.querySelectorAll(".marker").forEach(marker=>marker.remove());
     nextRole = 0;
+    resultShown = false;
+    lastResultCorrect = false;
     initRoles();
     drawRoles();
     updateLog();
@@ -896,6 +930,7 @@ function resetGame(){
     } else {
         hideResultImage();
     }
+    updateArrowVisibility();
     actionMessage.textContent = "クリックで矢印を配置";
     imageMessage.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "";
 }
@@ -908,8 +943,11 @@ alwaysShowImage.addEventListener("change", ()=>{
     } else {
         field.classList.remove("show-correct");
     }
+    updateArrowVisibility();
     imageMessage.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "正解画像を表示";
 });
+
+updateArrowVisibility();
 
 field.addEventListener("click",(e)=>{
 
