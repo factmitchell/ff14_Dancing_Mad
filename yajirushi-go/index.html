@@ -87,8 +87,10 @@ h1{
     width:26px;
     height:26px;
     border-radius:4px;
+    box-sizing:border-box;
+    border:1.5px solid transparent;
     text-align:center;
-    line-height:26px;
+    line-height:23px;
     font-size:12px;
     font-weight:bold;
     color:#fff;
@@ -645,9 +647,10 @@ function initStaticField(){
         el.className = "field-marker";
         el.style.left = m.x + "px";
         el.style.top  = m.y + "px";
-        el.style.backgroundColor = m.bg;
+        el.style.backgroundColor = "rgba(5,5,12,0.88)";
+        el.style.border = `1.5px solid ${m.color}`;
         el.style.color = m.color;
-        el.style.boxShadow = `0 0 8px ${m.color}bb`;
+        el.style.boxShadow = `0 0 8px ${m.color}cc, 0 0 16px ${m.color}66`;
         el.textContent = m.label;
         f.appendChild(el);
     });
