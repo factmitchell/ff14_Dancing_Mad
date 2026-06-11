@@ -227,6 +227,82 @@ button{
 button:hover{
     background:#ddd;
 }
+
+#debug-toggle-btn{
+    margin-top:20px;
+    padding:6px 14px;
+    font-size:13px;
+    background:#333;
+    color:#888;
+    border:1px solid #555;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+#debug-toggle-btn.active{
+    background:#3a3a00;
+    color:#ffd700;
+    border-color:#ffd700;
+}
+
+#debug-panel{
+    display:none;
+    margin:12px auto 0;
+    max-width:900px;
+    background:#1a1a0d;
+    border:1px solid #ffd70066;
+    border-radius:8px;
+    padding:12px 16px;
+    font-size:13px;
+    color:#ccc;
+}
+
+#debug-panel.active{
+    display:block;
+}
+
+#debug-panel .debug-hint{
+    margin-bottom:8px;
+    color:#ffd700;
+    font-weight:bold;
+}
+
+#marker-log{
+    width:100%;
+    height:200px;
+    background:#0d0d0a;
+    color:#7ec8e3;
+    font-family:monospace;
+    font-size:12px;
+    border:1px solid #444;
+    border-radius:4px;
+    padding:8px;
+    box-sizing:border-box;
+    resize:vertical;
+}
+
+#copy-log-btn{
+    margin-top:6px;
+    padding:6px 14px;
+    font-size:13px;
+    background:#335;
+    color:#7ec8e3;
+    border:1px solid #7ec8e3;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+.field-marker.debug-active{
+    pointer-events:all !important;
+    cursor:grab;
+    outline:2px dashed #ffd700;
+    outline-offset:3px;
+    z-index:10;
+}
+
+.field-marker.debug-active:active{
+    cursor:grabbing;
+}
 </style>
 </head>
 <body>
@@ -273,6 +349,14 @@ button:hover{
 </div>
 
 <div id="log"></div>
+
+<button id="debug-toggle-btn">デバッグ: OFF</button>
+
+<div id="debug-panel">
+    <div class="debug-hint">🔧 フィールドマーカーをドラッグして位置を調整してください</div>
+    <textarea id="marker-log" readonly></textarea>
+    <button id="copy-log-btn">コードをコピー</button>
+</div>
 
 <script>
 
@@ -823,6 +907,8 @@ alwaysShowImage.addEventListener("change", ()=>{
 
 field.addEventListener("click",(e)=>{
 
+    if(debugMode) return;
+
     if(nextRole >= roles.length){
         return;
     }
@@ -861,6 +947,81 @@ field.addEventListener("click",(e)=>{
     if(nextRole >= roles.length){
         showResultImage();
     }
+});
+
+/* ── デバッグ機能 ───────────────────────────────────────────── */
+
+let debugMode = false;
+let debugDragTarget = null;
+let debugDragOX = 0;
+let debugDragOY = 0;
+
+function updateMarkerLog(){
+    const els = field.querySelectorAll(".field-marker");
+    const lines = ["const fieldMarkerData = ["];
+    els.forEach(el => {
+        const label = el.textContent.trim();
+        const x = Math.round(parseFloat(el.style.left));
+        const y = Math.round(parseFloat(el.style.top));
+        const src = fieldMarkerData.find(d => d.label === label) || {};
+        lines.push(
+            `    { x: ${String(x).padStart(3)}, y: ${String(y).padStart(3)},` +
+            ` label: "${label}", color: "${src.color || ""}", bg: "${src.bg || ""}" },`
+        );
+    });
+    lines.push("];");
+    document.getElementById("marker-log").value = lines.join("\n");
+}
+
+function toggleDebug(){
+    debugMode = !debugMode;
+    const btn   = document.getElementById("debug-toggle-btn");
+    const panel = document.getElementById("debug-panel");
+
+    btn.textContent = debugMode ? "デバッグ: ON" : "デバッグ: OFF";
+    btn.classList.toggle("active", debugMode);
+    panel.classList.toggle("active", debugMode);
+
+    field.querySelectorAll(".field-marker").forEach(el => {
+        el.classList.toggle("debug-active", debugMode);
+    });
+
+    if(debugMode) updateMarkerLog();
+}
+
+document.getElementById("debug-toggle-btn").addEventListener("click", toggleDebug);
+
+document.getElementById("copy-log-btn").addEventListener("click", () => {
+    const ta = document.getElementById("marker-log");
+    ta.select();
+    document.execCommand("copy");
+    const btn = document.getElementById("copy-log-btn");
+    btn.textContent = "コピーしました！";
+    setTimeout(() => { btn.textContent = "コードをコピー"; }, 1500);
+});
+
+field.addEventListener("mousedown", e => {
+    if(!debugMode) return;
+    const marker = e.target.closest(".field-marker");
+    if(!marker) return;
+    e.stopPropagation();
+    e.preventDefault();
+    debugDragTarget = marker;
+    const rect = field.getBoundingClientRect();
+    debugDragOX = e.clientX - rect.left - parseFloat(marker.style.left);
+    debugDragOY = e.clientY - rect.top  - parseFloat(marker.style.top);
+});
+
+document.addEventListener("mousemove", e => {
+    if(!debugDragTarget) return;
+    const rect = field.getBoundingClientRect();
+    debugDragTarget.style.left = Math.round(e.clientX - rect.left - debugDragOX) + "px";
+    debugDragTarget.style.top  = Math.round(e.clientY - rect.top  - debugDragOY) + "px";
+    updateMarkerLog();
+});
+
+document.addEventListener("mouseup", () => {
+    debugDragTarget = null;
 });
 
 </script>
