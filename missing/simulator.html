@@ -124,6 +124,29 @@
             65%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
             100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
         }
+        @keyframes towerPop {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            50%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.0); }
+        }
+        #tower-popup {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            font-weight: bold;
+            color: #fff;
+            background: rgba(0,0,0,0.72);
+            border: 2px solid #ffd700;
+            border-radius: 12px;
+            padding: 10px 28px;
+            display: none;
+            pointer-events: none;
+            z-index: 11;
+            white-space: nowrap;
+        }
         #practice-feedback {
             position: absolute;
             top: 50%;
@@ -189,6 +212,7 @@
         <div id="canvas-container">
             <canvas id="fieldCanvas" width="750" height="750"></canvas>
             <div id="practice-feedback"></div>
+            <div id="tower-popup"></div>
         </div>
         <div id="statePanel" style="background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; min-width: 220px;"></div>
     </div>
@@ -613,11 +637,11 @@
                 if (!practiceMode) {
                     ctx.globalAlpha = 1.0;
                 } else {
-                    const isPracticeTarget = player.id === practiceJob;
-                    const isActivePlayer   = player.debuff.group === activeGroup;
-                    // hit1(開始): ペアもくっきり。hit2+: アクティブ4人くっきり
-                    const isBright = isPracticeTarget || isActivePlayer ||
-                                     (currentTowerHit === 1 && player.id === practicePairId);
+                    const isPracticeTarget  = player.id === practiceJob;
+                    const practiceJobActive = players.find(p => p.id === practiceJob)?.debuff.group === activeGroup;
+                    // 選択ジョブは常にくっきり。選択ジョブが塔担当のときのみ同じ塔の4人もくっきり
+                    const isBright = isPracticeTarget ||
+                                     (practiceJobActive && player.debuff.group === activeGroup);
                     ctx.globalAlpha = isBright ? 1.0 : 0.25;
                 }
 
@@ -968,7 +992,12 @@
             el.style.animation = 'none';
             void el.offsetWidth; // reflow
             el.style.animation = 'feedbackPop 1.2s ease-out forwards';
-            practiceFeedbackTimer = setTimeout(() => { el.style.display = 'none'; }, 1200);
+            practiceFeedbackTimer = setTimeout(() => {
+                el.style.display = 'none';
+                if (practiceMode && currentTowerHit < 8) {
+                    setTowerHit(currentTowerHit + 1);
+                }
+            }, 1400);
         }
 
         function updatePracticeStatus() {
@@ -1238,7 +1267,20 @@
                 &nbsp;|&nbsp; 保存: ${oddSaved} ${evenSaved}`;
         }
 
+        let towerPopupTimer = null;
+        function showTowerPopup(hit) {
+            const el = document.getElementById('tower-popup');
+            if (towerPopupTimer) clearTimeout(towerPopupTimer);
+            el.textContent = `塔: ${hit} / 8`;
+            el.style.display = 'block';
+            el.style.animation = 'none';
+            void el.offsetWidth;
+            el.style.animation = 'towerPop 1.0s ease-out forwards';
+            towerPopupTimer = setTimeout(() => { el.style.display = 'none'; }, 1000);
+        }
+
         function setTowerHit(hit) {
+            const prev = currentTowerHit;
             currentTowerHit = Math.max(0, Math.min(8, hit));
             applyTowerHitDebuffs();
             // 練習モード: ヒットが変わったら選択・判定状態をリセット
@@ -1246,6 +1288,9 @@
                 practiceSelected = null;
                 practiceChecked  = false;
                 updatePracticeStatus();
+                if (currentTowerHit > 0 && currentTowerHit !== prev) {
+                    showTowerPopup(currentTowerHit);
+                }
             }
             updateTowerStatus();
             updateStatePanel();
