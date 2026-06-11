@@ -43,33 +43,76 @@ h1{
     width:900px;
     height:600px;
     margin:auto;
-    border:2px solid white;
-    background:#333;
+    border:2px solid #444;
+    background:#0d0d12;
     position:relative;
     overflow:hidden;
 }
 
-#field::before{
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: url("image_empty.png") center/contain no-repeat;
-    opacity: 0.12;
-    pointer-events: none;
+.arena{
+    position:absolute;
+    width:572px;
+    height:572px;
+    border-radius:50%;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle at 42% 37%, #22253a 0%, #141626 55%, #090b16 100%);
+    border:2px solid rgba(130,140,180,0.4);
+    box-shadow:inset 0 0 70px rgba(0,0,80,0.5), 0 0 18px rgba(0,0,60,0.4);
+    pointer-events:none;
+    z-index:0;
 }
 
-#field::after{
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: url("image_correct.png") center/contain no-repeat;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
+.tower{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    width:52px;
+    height:52px;
+    border-radius:50%;
+    background:radial-gradient(circle at 38% 32%, #d4824e 0%, #9e4e1a 45%, #5a2808 100%);
+    border:2px solid rgba(220,140,60,0.65);
+    box-shadow:0 0 10px rgba(180,70,10,0.45), inset 0 0 6px rgba(255,200,100,0.15);
+    text-align:center;
+    line-height:52px;
+    font-size:24px;
+    color:rgba(255,255,255,0.9);
+    pointer-events:none;
+    z-index:1;
 }
 
-#field.show-correct::after{
-    opacity: 0.18;
+.field-marker{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    width:26px;
+    height:26px;
+    border-radius:4px;
+    text-align:center;
+    line-height:26px;
+    font-size:12px;
+    font-weight:bold;
+    color:#fff;
+    pointer-events:none;
+    z-index:2;
+}
+
+.target-marker{
+    position:absolute;
+    transform:translate(-50%, -50%);
+    width:64px;
+    height:64px;
+    border-radius:50%;
+    border:3px solid rgba(255,215,0,0.9);
+    background:rgba(255,215,0,0.06);
+    box-shadow:0 0 14px rgba(255,215,0,0.55);
+    pointer-events:none;
+    opacity:0;
+    transition:opacity 0.3s ease;
+    z-index:3;
+}
+
+#field.show-correct .target-marker{
+    opacity:1;
 }
 
 .marker{
@@ -77,6 +120,7 @@ h1{
     transform:translate(-50%, -50%);
     font-size:60px;
     pointer-events:none;
+    z-index:4;
 }
 
 .marker.correct{
@@ -455,6 +499,69 @@ function recordPatternResult(){
 
 /* 固定秒数 */
 
+const towerData = [
+    // 左上グループ
+    { x: 260, y: 108, arrow: "↓" },
+    { x: 262, y: 200, arrow: "↓" },
+    { x: 367, y: 106, arrow: "←" },
+    { x: 362, y: 210, arrow: "↑" },
+    // 右上グループ
+    { x: 540, y:  98, arrow: "←" },
+    { x: 640, y: 109, arrow: "←" },
+    { x: 537, y: 209, arrow: "→" },
+    { x: 640, y: 206, arrow: "↑" },
+    // 左下グループ
+    { x: 264, y: 388, arrow: "↓" },
+    { x: 360, y: 398, arrow: "←" },
+    { x: 267, y: 496, arrow: "→" },
+    { x: 358, y: 496, arrow: "→" },
+    // 右下グループ
+    { x: 540, y: 385, arrow: "↓" },
+    { x: 540, y: 487, arrow: "→" },
+    { x: 638, y: 392, arrow: "↑" },
+    { x: 640, y: 495, arrow: "↑" },
+];
+
+const fieldMarkerData = [
+    { x: 450, y:  60, label: "A", color: "#ff6090", bg: "rgba(255,60,100,0.35)" },
+    { x: 678, y: 146, label: "2", color: "#ffd700", bg: "rgba(255,210,0,0.35)" },
+    { x: 732, y: 300, label: "B", color: "#ffa040", bg: "rgba(255,150,30,0.35)" },
+    { x: 678, y: 454, label: "3", color: "#40c8ff", bg: "rgba(0,180,255,0.35)" },
+    { x: 450, y: 543, label: "C", color: "#40c8ff", bg: "rgba(0,180,255,0.35)" },
+    { x: 222, y: 454, label: "4", color: "#c080ff", bg: "rgba(160,80,255,0.35)" },
+    { x: 168, y: 300, label: "D", color: "#c080ff", bg: "rgba(160,80,255,0.35)" },
+    { x: 222, y: 146, label: "1", color: "#d0d0d0", bg: "rgba(200,200,200,0.35)" },
+];
+
+function initStaticField(){
+    const f = document.getElementById("field");
+
+    const arena = document.createElement("div");
+    arena.className = "arena";
+    f.appendChild(arena);
+
+    towerData.forEach(t => {
+        const el = document.createElement("div");
+        el.className = "tower";
+        el.style.left = t.x + "px";
+        el.style.top  = t.y + "px";
+        el.textContent = t.arrow;
+        f.appendChild(el);
+    });
+
+    fieldMarkerData.forEach(m => {
+        const el = document.createElement("div");
+        el.className = "field-marker";
+        el.style.left = m.x + "px";
+        el.style.top  = m.y + "px";
+        el.style.backgroundColor = m.bg;
+        el.style.color = m.color;
+        el.style.boxShadow = `0 0 8px ${m.color}bb`;
+        el.textContent = m.label;
+        f.appendChild(el);
+    });
+}
+
 const roles = [];
 
 initializePatternStats();
@@ -463,6 +570,7 @@ function initRoles(){
     const pair = nextArrowPair();
 
     roles.length = 0;
+    document.getElementById("field").querySelectorAll(".target-marker").forEach(m => m.remove());
     if(!pair){
         return;
     }
@@ -487,6 +595,15 @@ function initRoles(){
             tolerance: 25
         }
     );
+
+    const fieldEl = document.getElementById("field");
+    roles.forEach(role => {
+        const marker = document.createElement("div");
+        marker.className = "target-marker";
+        marker.style.left = role.targetX + "px";
+        marker.style.top  = role.targetY + "px";
+        fieldEl.appendChild(marker);
+    });
 }
 
 initRoles();
@@ -638,6 +755,8 @@ let nextRole = 0;
 
 const field =
     document.getElementById("field");
+
+initStaticField();
 
 const retryButton =
     document.getElementById("retry");
