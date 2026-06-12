@@ -1139,6 +1139,8 @@
                 if (d < threshold && d < minDist) { minDist = d; nearest = z; }
             });
             if (nearest) {
+                // 同じゾーンを2回クリック → 答え合わせ
+                if (guidanceSelected === nearest.key) { checkGuidanceAnswer(); return true; }
                 guidanceSelected = nearest.key;
                 updatePracticeStatus();
                 drawField();
@@ -1338,7 +1340,11 @@
                 if (d < threshold && d < minDist) { minDist = d; nearest = z; }
             });
             if (nearest) {
-                practiceSelected = nearest;  // ゾーンオブジェクト全体 {x, y, playerIds} を保持
+                // 同じゾーンを2回クリック → 答え合わせ
+                const alreadySelected = practiceSelected &&
+                    practiceSelected.playerIds.join(',') === nearest.playerIds.join(',');
+                if (alreadySelected) { checkPracticeAnswer(); return true; }
+                practiceSelected = nearest;
                 updatePracticeStatus();
                 drawField();
                 return true;
