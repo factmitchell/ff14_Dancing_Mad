@@ -223,6 +223,12 @@
             <button class="group-btn"          id="btn-group-saki" data-group="先組">先組</button>
             <button class="group-btn"          id="btn-group-ato"  data-group="後組">後組</button>
         </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+            <label style="font-size:12px;color:#aaa;cursor:pointer;user-select:none;">
+                <input type="checkbox" id="guidance-toggle" checked style="accent-color:#87ceeb;cursor:pointer;">
+                過去/未来誘導
+            </label>
+        </div>
         <div id="practice-status"></div>
     </div>
 
@@ -791,6 +797,7 @@
             ctx.fillText('D', s(35), centerY);
 
             drawGimmickGuides();
+            drawGuidanceAoEOverlay();
             // hard mode: hide AoE effects until answer checked
             if (!practiceMode || practiceDifficulty === 'easy' || practiceChecked) {
                 drawTowerEffects(getTowerEffects());
@@ -1078,6 +1085,189 @@
         let practiceDifficulty = 'hard'; // 'easy' | 'hard'
         let practiceGroup = '全部';       // '全部' | '先組' | '後組'
 
+        // 過去/未来誘導フェーズ
+        let guidanceEnabled  = true;
+        let guidancePhase    = false;   // 現在誘導フェーズ中か
+        let guidanceCast     = null;    // '過去の終焉' | '未来の終焉'
+        let guidanceChecked  = false;
+        let guidanceSelected = null;    // 'SOUTH' | 'NORTH'
+        let guidanceNextHit  = null;    // 誘導後に進む奇数ヒット番号
+        let guidanceScores   = {};      // { evenHit: 'correct'|'wrong' }
+        const GUIDANCE_SOUTH = { x: 298, y: 411 };  // 過去の終焉 → 南集合
+        const GUIDANCE_NORTH = { x: 301, y: 220 };  // 未来の終焉 → 北集合
+
+        // ── 過去/未来誘導フェーズ ───────────────────────────────────────────
+
+        function getGuidanceZones() {
+            const sf = getScaleFactor();
+            return [
+                { key: 'NORTH', x: GUIDANCE_NORTH.x * sf, y: GUIDANCE_NORTH.y * sf, label: '北' },
+                { key: 'SOUTH', x: GUIDANCE_SOUTH.x * sf, y: GUIDANCE_SOUTH.y * sf, label: '南' },
+            ];
+        }
+
+        function enterGuidancePhase(nextOddHit) {
+            guidancePhase    = true;
+            guidanceCast     = Math.random() < 0.5 ? '過去の終焉' : '未来の終焉';
+            guidanceChecked  = false;
+            guidanceSelected = null;
+            guidanceNextHit  = nextOddHit;
+            showGuidanceCastPopup();
+            updatePracticeStatus();
+            drawField();
+        }
+
+        function showGuidanceCastPopup() {
+            const el = document.getElementById('tower-popup');
+            if (towerPopupTimer) clearTimeout(towerPopupTimer);
+            const color = guidanceCast === '過去の終焉' ? '#87ceeb' : '#ffa07a';
+            el.innerHTML = `<span style="color:${color}">${guidanceCast}</span>`;
+            el.style.display = 'block';
+            el.style.animation = 'none';
+            void el.offsetWidth;
+            el.style.animation = 'towerPop 1.5s ease-out forwards';
+            towerPopupTimer = setTimeout(() => { el.style.display = 'none'; }, 1500);
+        }
+
+        function handleGuidanceClick(cx, cy) {
+            if (guidanceChecked) return false;
+            const zones = getGuidanceZones();
+            const threshold = s(32);
+            let nearest = null, minDist = Infinity;
+            zones.forEach(z => {
+                const d = Math.hypot(cx - z.x, cy - z.y);
+                if (d < threshold && d < minDist) { minDist = d; nearest = z; }
+            });
+            if (nearest) {
+                guidanceSelected = nearest.key;
+                updatePracticeStatus();
+                drawField();
+                return true;
+            }
+            return false;
+        }
+
+        function checkGuidanceAnswer() {
+            if (!guidancePhase || guidanceChecked || !guidanceSelected) return false;
+            const correct = guidanceCast === '過去の終焉' ? guidanceSelected === 'SOUTH' : guidanceSelected === 'NORTH';
+            guidanceChecked = true;
+            guidanceScores[guidanceNextHit - 1] = correct ? 'correct' : 'wrong';
+            showGuidanceFeedback(correct);
+            return true;
+        }
+
+        function showGuidanceFeedback(correct) {
+            const el = document.getElementById('practice-feedback');
+            if (practiceFeedbackTimer) clearTimeout(practiceFeedbackTimer);
+            el.textContent   = correct ? '✓' : '✗';
+            el.style.color   = correct ? '#7fff7f' : '#ff4444';
+            el.style.display = 'block';
+            el.style.animation = 'none';
+            void el.offsetWidth;
+            el.style.animation = 'feedbackPop 1.2s ease-out forwards';
+            drawField();
+            practiceFeedbackTimer = setTimeout(() => {
+                el.style.display = 'none';
+                guidancePhase = false;
+                setTowerHit(guidanceNextHit);
+            }, 1400);
+        }
+
+        function drawGuidanceOverlay() {
+            if (!guidancePhase) return;
+
+            // フィールドを薄暗くして誘導フェーズを強調
+            ctx.fillStyle = 'rgba(0,0,0,0.40)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // ボス (フィールド中央)
+            ctx.fillStyle = 'rgba(255,120,20,0.9)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, s(18), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = s(2);
+            ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = scaledFont(9, 'bold');
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('BOSS', centerX, centerY);
+
+            // 上部に詠唱名
+            const castColor = guidanceCast === '過去の終焉' ? '#87ceeb' : '#ffa07a';
+            ctx.fillStyle = 'rgba(0,0,0,0.85)';
+            ctx.fillRect(centerX - s(175), s(10), s(350), s(32));
+            ctx.fillStyle = castColor;
+            ctx.font = scaledFont(14, 'bold');
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`詠唱: ${guidanceCast}  — 全員の集合位置は？`, centerX, s(26));
+
+            // 北/南 集合ゾーン
+            const zones = getGuidanceZones();
+            const correctKey = guidanceCast === '過去の終焉' ? 'SOUTH' : 'NORTH';
+            zones.forEach(zone => {
+                const isSelected = guidanceSelected === zone.key;
+                const isCorrect  = zone.key === correctKey;
+
+                let fill, stroke, textColor;
+                if (guidanceChecked) {
+                    if (isCorrect)        { fill = 'rgba(100,255,100,0.30)'; stroke = '#7fff7f'; textColor = '#7fff7f'; }
+                    else if (isSelected)  { fill = 'rgba(255,60,60,0.30)';  stroke = '#ff4444'; textColor = '#ff4444'; }
+                    else                  { fill = 'rgba(255,255,255,0.06)'; stroke = 'rgba(255,255,255,0.25)'; textColor = '#555'; }
+                } else if (isSelected) {
+                    fill = 'rgba(255,215,0,0.30)'; stroke = '#ffd700'; textColor = '#ffd700';
+                } else {
+                    fill = 'rgba(255,255,255,0.14)'; stroke = 'rgba(255,255,255,0.65)'; textColor = '#fff';
+                }
+
+                const r = s(30);
+                ctx.beginPath();
+                ctx.arc(zone.x, zone.y, r, 0, Math.PI * 2);
+                ctx.fillStyle = fill;
+                ctx.fill();
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = s(2.5);
+                ctx.stroke();
+
+                ctx.fillStyle = textColor;
+                ctx.font = scaledFont(14, 'bold');
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(zone.label, zone.x, zone.y);
+            });
+        }
+
+        function drawGuidanceAoEOverlay() {
+            if (!guidanceEnabled || !practiceMode) return;
+            // 奇数ヒット3,5,7: 誘導成功後なのでボスの180度攻撃がフィールド北側を覆う
+            if (currentTowerHit !== 3 && currentTowerHit !== 5 && currentTowerHit !== 7) return;
+
+            ctx.save();
+            // 北半円 (y < centerY) を赤い危険ゾーンとして表示
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, 0, false); // 左→上→右 (北半円)
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(220,40,40,0.16)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(220,60,60,0.50)';
+            ctx.lineWidth = s(1.5);
+            ctx.stroke();
+            ctx.restore();
+
+            // ラベル
+            ctx.fillStyle = 'rgba(255,90,90,0.95)';
+            ctx.font = scaledFont(11, 'bold');
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('← ボス180°攻撃範囲 →', centerX, s(50));
+        }
+
+        // ───────────────────────────────────────────────────────────────────
+
         function getPracticeZones() {
             if (currentTowerHit === 0) return [];
             const sf = getScaleFactor();
@@ -1106,6 +1296,10 @@
             practiceSelected = null;
             practiceChecked  = false;
             practiceScores   = {};
+            guidancePhase    = false;
+            guidanceChecked  = false;
+            guidanceSelected = null;
+            guidanceScores   = {};
             document.querySelectorAll('.job-btn').forEach(btn => {
                 btn.classList.toggle('selected', btn.dataset.job === id);
             });
@@ -1114,17 +1308,23 @@
         }
 
         function exitPracticeMode() {
-            practiceMode = false;
-            practiceJob  = null;
+            practiceMode     = false;
+            practiceJob      = null;
             practiceSelected = null;
             practiceChecked  = false;
+            guidancePhase    = false;
+            guidanceChecked  = false;
+            guidanceSelected = null;
+            guidanceScores   = {};
             document.querySelectorAll('.job-btn').forEach(btn => btn.classList.remove('selected'));
             updatePracticeStatus();
             drawField();
         }
 
         function handlePracticeClick(cx, cy) {
-            if (!practiceMode || currentTowerHit === 0 || practiceChecked) return false;
+            if (!practiceMode) return false;
+            if (guidancePhase) return handleGuidanceClick(cx, cy);
+            if (currentTowerHit === 0 || practiceChecked) return false;
             const zones = getPracticeZones();
             const threshold = s(28);
             let nearest = null, minDist = Infinity;
@@ -1189,7 +1389,13 @@
             practiceFeedbackTimer = setTimeout(() => {
                 el.style.display = 'none';
                 if (practiceMode && currentTowerHit < 8) {
-                    setTowerHit(currentTowerHit + 1);
+                    const nextHit = currentTowerHit + 1;
+                    // 偶数→奇数の間 (ヒット2→3, 4→5, 6→7) に誘導フェーズを挟む
+                    if (guidanceEnabled && currentTowerHit % 2 === 0 && nextHit <= 7) {
+                        enterGuidancePhase(nextHit);
+                    } else {
+                        setTowerHit(nextHit);
+                    }
                 }
             }, 1400);
         }
@@ -1197,11 +1403,27 @@
         function updatePracticeStatus() {
             const el = document.getElementById('practice-status');
             if (!practiceMode) { el.innerHTML = ''; return; }
-            const answered = Object.keys(practiceScores).length;
-            const correct  = Object.values(practiceScores).filter(v => v === 'correct').length;
+            const towerAnswered  = Object.keys(practiceScores).length;
+            const towerCorrect   = Object.values(practiceScores).filter(v => v === 'correct').length;
+            const guidAnswered   = Object.keys(guidanceScores).length;
+            const guidCorrect    = Object.values(guidanceScores).filter(v => v === 'correct').length;
+            const totalAnswered  = towerAnswered + guidAnswered;
+            const totalCorrect   = towerCorrect  + guidCorrect;
             let html = `練習中: <strong style="color:#ffd700">${practiceJob}</strong>`;
-            if (answered > 0) html += ` &nbsp;|&nbsp; スコア: <strong>${correct}/${answered}</strong>`;
-            if (currentTowerHit > 0) {
+            if (totalAnswered > 0) html += ` &nbsp;|&nbsp; スコア: <strong>${totalCorrect}/${totalAnswered}</strong>`;
+
+            if (guidancePhase) {
+                const castColor = guidanceCast === '過去の終焉' ? '#87ceeb' : '#ffa07a';
+                if (guidanceChecked) {
+                    const r = guidanceScores[guidanceNextHit - 1];
+                    if (r === 'correct') html += ' &nbsp;|&nbsp; <span style="color:#7fff7f">✓ 誘導正解！</span>';
+                    else                 html += ` &nbsp;|&nbsp; <span style="color:#ff4444">✗ 誘導不正解 — ${guidanceCast === '過去の終焉' ? '南(South)' : '北(North)'}が正解</span>`;
+                } else if (guidanceSelected) {
+                    html += ' &nbsp;|&nbsp; <span style="color:#ffd700">選択済み → 「答え合わせ」を押してください</span>';
+                } else {
+                    html += ` &nbsp;|&nbsp; <span style="color:${castColor}">【誘導】<strong>${guidanceCast}</strong> — 北(N)か南(S)をクリック</span>`;
+                }
+            } else if (currentTowerHit > 0) {
                 if (practiceChecked) {
                     const r = practiceScores[currentTowerHit];
                     if (r === 'correct') html += ' &nbsp;|&nbsp; <span style="color:#7fff7f">✓ 正解！</span>';
@@ -1217,6 +1439,7 @@
 
         function drawPracticeOverlay() {
             if (!practiceMode || currentTowerHit === 0) return;
+            if (guidancePhase) { drawGuidanceOverlay(); return; }
             const zones = getPracticeZones();
             const correctIds = (() => {
                 const parity = currentTowerHit % 2 === 1 ? 'odd' : 'even';
@@ -1509,6 +1732,10 @@
                     practiceFeedbackTimer = null;
                     document.getElementById('practice-feedback').style.display = 'none';
                 }
+                // 誘導フェーズをリセット
+                guidancePhase    = false;
+                guidanceChecked  = false;
+                guidanceSelected = null;
                 practiceSelected = null;
                 practiceChecked  = false;
                 updatePracticeStatus();
@@ -1623,6 +1850,10 @@
                 practiceSelected = null;
                 practiceChecked  = false;
                 practiceScores   = {};
+                guidancePhase    = false;
+                guidanceChecked  = false;
+                guidanceSelected = null;
+                guidanceScores   = {};
             }
             setTowerHit(1);
             updateLog('デバフを生成しました（1回目の塔から開始）。');
@@ -1830,7 +2061,9 @@
         document.getElementById('btn-next-hit').addEventListener('click', () => changeTowerHit(1));
         document.getElementById('btn-align').addEventListener('click', autoAlign);
         document.getElementById('btn-check').addEventListener('click', () => {
-            if (practiceMode) { checkPracticeAnswer(); } else { checkGimmickSuccess(); }
+            if (practiceMode) {
+                if (guidancePhase) { checkGuidanceAnswer(); } else { checkPracticeAnswer(); }
+            } else { checkGimmickSuccess(); }
         });
         document.getElementById('btn-reset').addEventListener('click', resetSimulation);
 
@@ -1923,6 +2156,11 @@
                 towerStyle = btn.dataset.style;
                 updateStyleUI();
             });
+        });
+
+        document.getElementById('guidance-toggle').addEventListener('change', e => {
+            guidanceEnabled = e.target.checked;
+            drawField();
         });
 
         resetSimulation();
