@@ -517,8 +517,10 @@
             odd: {
                 'active_TH_頭割り':  P.O_TH_頭割り,
                 'active_TH_扇AoE':   P.O_TH_扇AoE,
+                'active_TH_円AoE':   P.O_TH_扇AoE,   // KTDN式: DPSが左サイドに入り円AoEを持つ場合→左下
                 'active_DPS_頭割り': P.O_DPS_頭割り,
                 'active_DPS_円AoE':  P.O_DPS_円AoE,
+                'active_DPS_扇AoE':  P.O_DPS_円AoE,  // KTDN式: THが右サイドに入り扇AoEを持つ場合→右下
                 'inactive_TANK':   P.O_WAIT_TANK,
                 'inactive_HEALER': P.O_WAIT_HEALER,
                 'inactive_MELEE':  P.O_WAIT_MELEE,
@@ -608,7 +610,7 @@
                     const pairIdx = pairGroups.findIndex(pair => pair.includes(p.id));
                     const partnerId = pairGroups[pairIdx]?.find(id => id !== p.id);
                     const isCollision = mec === evenAssign[partnerId];
-                    const role = p.role;
+                    const role = getActiveRole(p);
                     const goLeft = (role === 'HEALER') ||
                                    (role === 'TANK'   && !isCollision) ||
                                    (role === 'MELEE'  && isCollision);
@@ -1356,9 +1358,30 @@
                 }
             } else {
                 // 偶数回（頭割り無）: 円AoE × 2 + 扇AoE × 2
-                const all = shuffle(groupPlayers.map(p => p.id));
-                assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
-                assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
+                if (towerStyle === 'KTDN') {
+                    // KTDN式: 各サイド(LEFT/RIGHT)に円AoEと扇AoEを1つずつ配置
+                    // → 次の奇数塔で「下のプレイヤーが逆サイドへ」ルールが全員に機能し
+                    //   4人が同サイドに集まる(4/0スプリット)を防ぐ
+                    const group = getTowerGroupByHit(hit);
+                    const sideAssign = getEvenHitSideAssignment(group, hit);
+                    const leftPlayers  = shuffle(groupPlayers.filter(p => sideAssign[p.id] === 'LEFT'));
+                    const rightPlayers = shuffle(groupPlayers.filter(p => sideAssign[p.id] === 'RIGHT'));
+                    if (leftPlayers.length === 2 && rightPlayers.length === 2) {
+                        assignment[leftPlayers[0].id]  = '円AoE';
+                        assignment[leftPlayers[1].id]  = '扇AoE';
+                        assignment[rightPlayers[0].id] = '円AoE';
+                        assignment[rightPlayers[1].id] = '扇AoE';
+                    } else {
+                        // フォールバック: サイド情報が揃わない場合はランダム
+                        const all = shuffle(groupPlayers.map(p => p.id));
+                        assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
+                        assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
+                    }
+                } else {
+                    const all = shuffle(groupPlayers.map(p => p.id));
+                    assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
+                    assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
+                }
             }
             return assignment;
         }
