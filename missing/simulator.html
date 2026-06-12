@@ -125,6 +125,13 @@
         .group-btn:hover { background: #444; }
         .group-btn.selected { background: #2a3a2a; color: #7fff7f; border-color: #7fff7f; }
         #practice-status { font-size: 12px; color: #aaa; width: 100%; }
+        .style-btn {
+            background: #333; color: #ccc; border: 1px solid #555;
+            padding: 5px 14px; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: bold; transition: 0.2s;
+        }
+        .style-btn:hover { background: #444; }
+        .style-btn.selected { background: #2a2a4a; color: #9090ff; border-color: #6666cc; }
         @keyframes feedbackPop {
             0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
             25%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
@@ -170,7 +177,7 @@
 </head>
 <body>
 
-    <h1>P2ミッシング塔 KTヤーン式シミュレーター</h1>
+    <h1 id="main-title">P2ミッシング塔 KTヤーン式シミュレーター</h1>
 
     <div id="controls">
         <button id="btn-init" class="active">初期配置</button>
@@ -185,6 +192,13 @@
         <button id="btn-debug" style="margin-left:12px; background:#2a2a2a; color:#666; border:1px solid #444; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:11px;">DEBUG</button>
         <button id="btn-odd" style="display:none">奇数回</button>
         <button id="btn-even" style="display:none">偶数回</button>
+    </div>
+
+    <div id="style-selector-bar" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;background:#2a2a35;padding:8px 14px;border-radius:8px;max-width:750px;width:100%;box-sizing:border-box;">
+        <span style="font-size:12px;color:#888;white-space:nowrap;">方式:</span>
+        <button class="style-btn selected" id="btn-style-kt"   data-style="KT">KTヤーン式</button>
+        <button class="style-btn"          id="btn-style-ktdn" data-style="KTDN">KTDN式</button>
+        <span id="style-description" style="font-size:11px;color:#666;margin-left:6px;">ペアベース（T+H / M+R）で左右を決定</span>
     </div>
 
     <div id="practice-panel">
@@ -234,6 +248,7 @@
         * 「デバフ生成」: ランダムにペアを先組/後組へ振り分け。先組=1238回目、後組=4567回目<br>
         * <span class="highlight">奇数回</span>（1,3,5,7）: 頭割り×2 + 扇AoE×1 + 円AoE×1 / <span class="highlight">偶数回</span>（2,4,6,8）: 円AoE×2 + 扇AoE×2<br>
         * 「前の塔」「次の塔」で1〜8回目を進めて担当グループのデバフを確認できます。<br>
+        * <span class="highlight">KTヤーン式</span>: ペアパートナーのデバフを見て左右を決定。同デバフ=衝突→優先ロールが左塔へ。<br>
         * 「自動整列」: 奇数回=頭割り位置、偶数回=KTコア配置（上左:Tank, 上右:Melee, 左:Healer, 右:Ranged）
     </div>
 
@@ -378,10 +393,47 @@
             const roleType = (player.role === 'TANK' || player.role === 'HEALER') ? 'TH' : 'DPS';
             if (isActive) {
                 if (currentTowerHit % 2 === 0) {
-                    // 偶数ヒット: 円AoE=下、扇AoE=上。塔左優先: HEALER(TH), MELEE(DPS)
-                    // 衝突時(同デバフ): 優先ロール→LEFT塔、従属ロール→RIGHT塔（同上下）
+                    const mec = player.debuff.mechanic || 'none';
+
+                    // KTDN式: 偶数塔の左右は「前の奇数塔の下のプレイヤー」で決定
+                    // 前の塔の左下(TH_扇AoE)・右下(DPS_円AoE)が今回は対角へ移動
+                    // そのペアパートナーは元のサイドを引き継ぐ
+                    if (towerStyle === 'KTDN') {
+                        const prevOddHit = getPreviousSameGroupOddHit(player.debuff.group, currentTowerHit);
+                        if (prevOddHit !== null) {
+                            const prevOrd    = getGroupHitOrdinal(player.debuff.group, prevOddHit);
+                            const prevAssign = towerDebuffAssignments[player.debuff.group][prevOrd] || {};
+                            // 前の塔の左下: TH側（TANK/HEALER）で扇AoEだったプレイヤー
+                            const prevLeftBottomId = players.find(p =>
+                                p.debuff.group === player.debuff.group &&
+                                (p.role === 'TANK' || p.role === 'HEALER') &&
+                                prevAssign[p.id] === '扇AoE'
+                            )?.id;
+                            // 前の塔の右下: DPS側で円AoEだったプレイヤー
+                            const prevRightBottomId = players.find(p =>
+                                p.debuff.group === player.debuff.group &&
+                                p.role === 'DPS' &&
+                                prevAssign[p.id] === '円AoE'
+                            )?.id;
+                            // 下のプレイヤー本人 → 対角（反対サイド）へ
+                            if (player.id === prevLeftBottomId)  return `active_RIGHT_${mec}`;
+                            if (player.id === prevRightBottomId) return `active_LEFT_${mec}`;
+                            // そのペアパートナー → 元のサイドを引き継ぐ
+                            const leftPartner = prevLeftBottomId
+                                ? pairGroups.find(pair => pair.includes(prevLeftBottomId))?.find(id => id !== prevLeftBottomId)
+                                : null;
+                            const rightPartner = prevRightBottomId
+                                ? pairGroups.find(pair => pair.includes(prevRightBottomId))?.find(id => id !== prevRightBottomId)
+                                : null;
+                            if (player.id === leftPartner)  return `active_LEFT_${mec}`;
+                            if (player.id === rightPartner) return `active_RIGHT_${mec}`;
+                        }
+                        // 前の奇数塔がない場合（後組ordinal1など）はKTヤーン式と同じ
+                    }
+
+                    // KTヤーン式（またはKTDN式のordinal1フォールバック）
+                    // 偶数ヒット: 円AoE=下、扇AoE=上。衝突時(同デバフ): 優先ロール→LEFT塔
                     const role = getActiveRole(player);
-                    const mec  = player.debuff.mechanic || 'none';
                     const pairIdx   = pairGroups.findIndex(pair => pair.includes(player.id));
                     const partnerId = pairGroups[pairIdx].find(id => id !== player.id);
                     const partner   = players.find(p => p.id === partnerId);
@@ -393,8 +445,26 @@
                                    (role === 'MELEE'  && isCollision);
                     return `${status}_${goLeft ? 'LEFT' : 'RIGHT'}_${mec}`;
                 }
-                // 奇数ヒット: 同ペア内でデバフが必ず異なるためデバフで位置決定
-                return `${status}_${roleType}_${player.debuff.mechanic || 'none'}`;
+                // 奇数ヒット
+                const oddMec = player.debuff.mechanic || 'none';
+                if (towerStyle === 'KTDN') {
+                    // KTDN式: 前の偶数塔の下のプレイヤーが今回は逆サイドへ移動
+                    const prevEvenHit = getPreviousSameGroupEvenHit(player.debuff.group, currentTowerHit);
+                    if (prevEvenHit !== null) {
+                        const sideAssign = getEvenHitSideAssignment(player.debuff.group, prevEvenHit);
+                        const prevSide = sideAssign[player.id];
+                        if (prevSide !== undefined) {
+                            const prevEvenOrd = getGroupHitOrdinal(player.debuff.group, prevEvenHit);
+                            const prevEvenAssign = towerDebuffAssignments[player.debuff.group][prevEvenOrd] || {};
+                            const wasAtBottom = prevEvenAssign[player.id] === '円AoE';
+                            // 下(円AoE)だったプレイヤー → 逆サイド, 上(扇AoE)だったプレイヤー → 同サイド
+                            const goLeft = wasAtBottom ? prevSide !== 'LEFT' : prevSide === 'LEFT';
+                            return `active_${goLeft ? 'TH' : 'DPS'}_${oddMec}`;
+                        }
+                    }
+                    // 前の偶数塔がない場合はロールベース（KTヤーン式と同じ）
+                }
+                return `${status}_${roleType}_${oddMec}`;
             }
             // 非アクティブ 奇数: 全員ロールで位置決定
             if (currentTowerHit % 2 === 1) {
@@ -485,6 +555,67 @@
                 if (getTowerGroupByHit(i) === group) count++;
             }
             return count;
+        }
+
+        // KTDN式用: 同グループの直前の奇数ヒットを返す（なければnull）
+        function getPreviousSameGroupOddHit(group, beforeHit) {
+            for (let h = beforeHit - 1; h >= 1; h--) {
+                if (getTowerGroupByHit(h) === group && h % 2 === 1) return h;
+            }
+            return null;
+        }
+
+        // KTDN式用: 同グループの直前の偶数ヒットを返す（なければnull）
+        function getPreviousSameGroupEvenHit(group, beforeHit) {
+            for (let h = beforeHit - 1; h >= 1; h--) {
+                if (getTowerGroupByHit(h) === group && h % 2 === 0) return h;
+            }
+            return null;
+        }
+
+        // KTDN式用: 指定偶数ヒットでの各プレイヤーの左右サイドを返す { [id]: 'LEFT'|'RIGHT' }
+        function getEvenHitSideAssignment(group, evenHit) {
+            const result = {};
+            const groupPlayers = players.filter(p => p.debuff.group === group);
+            const evenOrd = getGroupHitOrdinal(group, evenHit);
+            const evenAssign = towerDebuffAssignments[group][evenOrd] || {};
+            const prevOddHit = getPreviousSameGroupOddHit(group, evenHit);
+
+            if (prevOddHit !== null) {
+                // KTDN式: 前の奇数塔の下のプレイヤーが今回の偶数塔で左右を入れ替える
+                const prevOrd = getGroupHitOrdinal(group, prevOddHit);
+                const prevAssign = towerDebuffAssignments[group][prevOrd] || {};
+                const prevLeftBottomId = groupPlayers.find(p =>
+                    (p.role === 'TANK' || p.role === 'HEALER') && prevAssign[p.id] === '扇AoE'
+                )?.id;
+                const prevRightBottomId = groupPlayers.find(p =>
+                    p.role === 'DPS' && prevAssign[p.id] === '円AoE'
+                )?.id;
+                const leftPartner = prevLeftBottomId
+                    ? pairGroups.find(pair => pair.includes(prevLeftBottomId))?.find(id => id !== prevLeftBottomId)
+                    : null;
+                const rightPartner = prevRightBottomId
+                    ? pairGroups.find(pair => pair.includes(prevRightBottomId))?.find(id => id !== prevRightBottomId)
+                    : null;
+                if (prevLeftBottomId)  result[prevLeftBottomId] = 'RIGHT';
+                if (prevRightBottomId) result[prevRightBottomId] = 'LEFT';
+                if (leftPartner)  result[leftPartner]  = 'LEFT';
+                if (rightPartner) result[rightPartner] = 'RIGHT';
+            } else {
+                // KTヤーン式フォールバック（前の奇数塔がない場合 = 後組ordinal1など）
+                groupPlayers.forEach(p => {
+                    const mec = evenAssign[p.id];
+                    const pairIdx = pairGroups.findIndex(pair => pair.includes(p.id));
+                    const partnerId = pairGroups[pairIdx]?.find(id => id !== p.id);
+                    const isCollision = mec === evenAssign[partnerId];
+                    const role = p.role;
+                    const goLeft = (role === 'HEALER') ||
+                                   (role === 'TANK'   && !isCollision) ||
+                                   (role === 'MELEE'  && isCollision);
+                    result[p.id] = goLeft ? 'LEFT' : 'RIGHT';
+                });
+            }
+            return result;
         }
 
         function getPlayersByGroup(group) {
@@ -666,8 +797,8 @@
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
                 ctx.fill();
 
-                // easy mode: ペアパートナーに金リング
-                if (practiceMode && practiceDifficulty === 'easy' &&
+                // KTヤーン式 easy mode: ペアパートナーに金リング（KTDN式はペア基準ではないため非表示）
+                if (practiceMode && practiceDifficulty === 'easy' && towerStyle === 'KT' &&
                     player.id === practicePairId && player.debuff.group === activeGroup) {
                     ctx.strokeStyle = '#ffd700';
                     ctx.lineWidth = s(5);
@@ -899,6 +1030,8 @@
         }
 
         // ── 練習モード ────────────────────────────────────────────────────────
+        let towerStyle = 'KT'; // 'KT' (KTヤーン式) | 'KTDN' (KTDN式)
+
         let practiceMode  = false;
         let practiceJob   = null;
         let practiceSelected = null;  // 選択したゾーンの playerIds 配列
@@ -1575,7 +1708,8 @@
             const statePanel = document.getElementById('statePanel');
             const activeGroup = getTowerGroupByHit(currentTowerHit);
             const roundType = currentTowerHit > 0 ? (currentTowerHit % 2 === 1 ? '奇数回【頭割り有】' : '偶数回【頭割り無】') : '-';
-            let html = '<strong>KTヤーン式 現在の状態</strong><br>';
+            const styleLabel = towerStyle === 'KT' ? 'KTヤーン式' : 'KTDN式';
+            let html = `<strong>${styleLabel} 現在の状態</strong><br>`;
             html += `<div>塔: ${currentTowerHit} / 8回目 &nbsp; ${activeGroup ? `<span style="color:#ffd700">担当: ${activeGroup}</span>` : ''} &nbsp; ${currentTowerHit > 0 ? roundType : ''}</div>`;
             html += '<div style="margin-top: 8px;">';
             pairGroups.forEach((pair, pairIndex) => {
@@ -1705,7 +1839,57 @@
             drawField();
         });
 
+        function updateInfoPanel() {
+            const el = document.getElementById('info-panel');
+            if (towerStyle === 'KT') {
+                el.innerHTML =
+                    '<strong>【KTヤーン式 操作マニュアル】</strong><br>' +
+                    '* ペア構成: <span class="highlight">T+H</span>（MT+H1 / ST+H2）&amp; <span class="highlight">M+R</span>（D1+D3 / D2+D4）の4ペア<br>' +
+                    '* 「デバフ生成」: ランダムにペアを先組/後組へ振り分け。先組=1238回目、後組=4567回目<br>' +
+                    '* <span class="highlight">奇数回</span>（1,3,5,7）: 頭割り×2 + 扇AoE×1 + 円AoE×1 / <span class="highlight">偶数回</span>（2,4,6,8）: 円AoE×2 + 扇AoE×2<br>' +
+                    '* 「前の塔」「次の塔」で1〜8回目を進めて担当グループのデバフを確認できます。<br>' +
+                    '* <span class="highlight">KTヤーン式</span>: <strong>ペアパートナーのデバフ</strong>を見て左右を決定。同デバフ（衝突）→ 優先ロールが左塔へ（Healer/Melee優先LEFT）。<br>' +
+                    '* 「自動整列」: 奇数回=頭割り位置、偶数回=KTコア配置（上左:Tank, 上右:Melee, 左:Healer, 右:Ranged）';
+            } else {
+                el.innerHTML =
+                    '<strong>【KTDN式 操作マニュアル】</strong><br>' +
+                    '* ペア構成: <span class="highlight">T+H</span>（MT+H1 / ST+H2）&amp; <span class="highlight">M+R</span>（D1+D3 / D2+D4）の4ペア（先組/後組割り当てに使用）<br>' +
+                    '* 「デバフ生成」: ランダムにペアを先組/後組へ振り分け。先組=1238回目、後組=4567回目<br>' +
+                    '* <span class="highlight">奇数回</span>（1,3,5,7）: 頭割り×2 + 扇AoE×1 + 円AoE×1 / <span class="highlight">偶数回</span>（2,4,6,8）: 円AoE×2 + 扇AoE×2<br>' +
+                    '* 「前の塔」「次の塔」で1〜8回目を進めて担当グループのデバフを確認できます。<br>' +
+                    '* <span class="highlight">KTDN式</span>: ペアではなく<strong>前の塔の下の位置にいた人</strong>を基準に左右を決定。<br>' +
+                    '&nbsp;&nbsp;偶数塔: 前の奇数塔で右下にいた人（DPS+円AoE）の今回のデバフで下の入れ替え有無を判断。<br>' +
+                    '&nbsp;&nbsp;奇数塔: 前の偶数塔で下にいた人を確認して右下担当を決定。<br>' +
+                    '* 「自動整列」: 奇数回=頭割り位置、偶数回=KTコア配置（上左:Tank, 上右:Melee, 左:Healer, 右:Ranged）';
+            }
+        }
+
+        function updateStyleUI() {
+            const styleLabel = towerStyle === 'KT' ? 'KTヤーン式' : 'KTDN式';
+            document.getElementById('main-title').textContent =
+                `P2ミッシング塔 ${styleLabel}シミュレーター`;
+            document.getElementById('style-description').textContent =
+                towerStyle === 'KT'
+                    ? 'ペアベース（T+H / M+R）で左右を決定'
+                    : '前の塔の下の位置を基準に左右を決定（位置ベース）';
+            document.querySelectorAll('.style-btn').forEach(b => {
+                b.classList.toggle('selected', b.dataset.style === towerStyle);
+            });
+            updateInfoPanel();
+            updateStatePanel();
+            drawField();
+        }
+
+        document.querySelectorAll('.style-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (towerStyle === btn.dataset.style) return;
+                towerStyle = btn.dataset.style;
+                updateStyleUI();
+            });
+        });
+
         resetSimulation();
+        updateInfoPanel();
         drawField();
     </script>
 </body>
