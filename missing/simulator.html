@@ -635,7 +635,8 @@
             updateCoordsPanel();
 
             // ── 練習モード用: ペア情報 ─────────────────────────────────────────
-            const activeGroup = getTowerGroupByHit(currentTowerHit);
+            const activeGroup    = getTowerGroupByHit(currentTowerHit);
+            const prevActiveGroup = currentTowerHit > 1 ? getTowerGroupByHit(currentTowerHit - 1) : null;
             let practicePairId = null;
             if (practiceMode && practiceJob) {
                 const pairIdx = pairGroups.findIndex(pair => pair.includes(practiceJob));
@@ -650,9 +651,13 @@
                 } else {
                     const isPracticeTarget  = player.id === practiceJob;
                     const practiceJobActive = players.find(p => p.id === practiceJob)?.debuff.group === activeGroup;
-                    // 選択ジョブは常にくっきり。選択ジョブが塔担当のときのみ同じ塔の4人もくっきり
+                    // デバフが今見えているグループ（前のヒットで更新されたグループ、またはhit1は全員）
+                    const debuffNowVisible  = practiceDifficulty === 'easy' || hardIconVisible || practiceChecked;
+                    const isInDebuffGroup   = currentTowerHit === 1 ||
+                                             (prevActiveGroup !== null && player.debuff.group === prevActiveGroup);
                     const isBright = isPracticeTarget ||
-                                     (practiceJobActive && player.debuff.group === activeGroup);
+                                     (practiceJobActive && player.debuff.group === activeGroup) ||
+                                     (isInDebuffGroup && debuffNowVisible);
                     ctx.globalAlpha = isBright ? 1.0 : 0.25;
                 }
 
@@ -688,11 +693,12 @@
                     ctx.fill();
                 }
 
-                // emoji/label: 練習モードでは hit1=全員表示, hit2+=アクティブのみ
+                // emoji/label: 練習モードでは hit1=全員表示、hit2以降は直前のヒットでデバフ更新されたグループのみ
+                // (実際のギミック: 塔着弾後に担当グループのデバフが更新されるため)
                 // hard: 塔切り替え時3秒のみ表示
                 const showMarker = !practiceMode ||
                                    currentTowerHit === 1 ||
-                                   player.debuff.group === activeGroup;
+                                   (prevActiveGroup !== null && player.debuff.group === prevActiveGroup);
                 const showEmoji  = showMarker &&
                                    (!practiceMode ||
                                     practiceDifficulty === 'easy' ||
@@ -1230,7 +1236,15 @@
                 const group = getTowerGroupByHit(hit);
                 const ordinal = getGroupHitOrdinal(group, hit);
                 const groupPlayers = getPlayersByGroup(group);
-                towerDebuffAssignments[group][ordinal] = createTowerDebuffAssignment(groupPlayers, hit);
+                // 後組 ordinal 1（塔4）: 開始時に付与された初期デバフをそのまま使用
+                // 後組は塔担当が初めてなので、持ち込むデバフ = assignTowerGroups で設定した initialMechanic
+                if (group === '後組' && ordinal === 1) {
+                    const assignment = {};
+                    groupPlayers.forEach(p => { assignment[p.id] = p.initialMechanic; });
+                    towerDebuffAssignments[group][ordinal] = assignment;
+                } else {
+                    towerDebuffAssignments[group][ordinal] = createTowerDebuffAssignment(groupPlayers, hit);
+                }
             }
         }
 
@@ -1250,17 +1264,20 @@
                     player.debuff.mechanic = assignment[player.id] || '';
                     player.current_turn_active = !!player.debuff.mechanic;
                 } else {
-                    player.debuff.mechanic = '';
+                    // 非アクティブ側のメカニックは消さない。
+                    // 直前のヒットで更新されたデバフを次のヒット頭に表示するため。
                     player.current_turn_active = false;
                 }
             });
 
             // 先組は3回目の塔完了後（hit 4以降）にhit 8のデバフが付く（偶数: 円AoE/扇AoE）
+            // debuff.mechanic も更新することで頭上アイコンもステートパネルと一致させる
             if (currentTowerHit >= 4) {
                 const hit8Assign = towerDebuffAssignments['先組'][4] || {};
                 players.forEach(player => {
                     if (player.debuff.group === '先組' && hit8Assign[player.id]) {
-                        player.initialMechanic = hit8Assign[player.id];
+                        player.initialMechanic  = hit8Assign[player.id];
+                        player.debuff.mechanic  = hit8Assign[player.id];
                     }
                 });
             }
@@ -1316,6 +1333,12 @@
             applyTowerHitDebuffs();
             // 練習モード: ヒットが変わったら選択・判定状態をリセット
             if (practiceMode) {
+                // 手動ナビゲーション時に前の自動進行タイマーをキャンセル
+                if (practiceFeedbackTimer) {
+                    clearTimeout(practiceFeedbackTimer);
+                    practiceFeedbackTimer = null;
+                    document.getElementById('practice-feedback').style.display = 'none';
+                }
                 practiceSelected = null;
                 practiceChecked  = false;
                 updatePracticeStatus();
@@ -1660,6 +1683,7 @@
                 practiceDifficulty = btn.dataset.diff;
                 document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
+                updateStatePanel();
                 drawField();
             });
         });
