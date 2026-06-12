@@ -1169,7 +1169,12 @@
             practiceFeedbackTimer = setTimeout(() => {
                 el.style.display = 'none';
                 guidancePhase = false;
-                setTowerHit(guidanceNextHit);
+                if (guidanceNextHit !== null) {
+                    setTowerHit(guidanceNextHit);
+                } else {
+                    // ヒット8後の最終誘導完了
+                    drawField();
+                }
             }, 1400);
         }
 
@@ -1388,13 +1393,14 @@
             el.style.animation = 'feedbackPop 1.2s ease-out forwards';
             practiceFeedbackTimer = setTimeout(() => {
                 el.style.display = 'none';
-                if (practiceMode && currentTowerHit < 8) {
-                    const nextHit = currentTowerHit + 1;
-                    // 偶数→奇数の間 (ヒット2→3, 4→5, 6→7) に誘導フェーズを挟む
-                    if (guidanceEnabled && currentTowerHit % 2 === 0 && nextHit <= 7) {
+                if (practiceMode) {
+                    if (guidanceEnabled && currentTowerHit % 2 === 0) {
+                        // 偶数塔 (2,4,6,8) の後はすべて誘導フェーズ
+                        // hit8 の後は nextHit = null (終了)
+                        const nextHit = currentTowerHit < 8 ? currentTowerHit + 1 : null;
                         enterGuidancePhase(nextHit);
-                    } else {
-                        setTowerHit(nextHit);
+                    } else if (currentTowerHit < 8) {
+                        setTowerHit(currentTowerHit + 1);
                     }
                 }
             }, 1400);
