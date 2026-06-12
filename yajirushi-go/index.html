@@ -669,10 +669,11 @@ function initRoles(){
         return;
     }
 
+    const times = Math.random() < 0.5 ? [3, 5] : [5, 3];
     roles.push(
         {
             arrow: pair.arrows[0],
-            time: 3,
+            time: times[0],
             x: null,
             y: null,
             targetX: pair.targets[0].x,
@@ -681,7 +682,7 @@ function initRoles(){
         },
         {
             arrow: pair.arrows[1],
-            time: 5,
+            time: times[1],
             x: null,
             y: null,
             targetX: pair.targets[1].x,
