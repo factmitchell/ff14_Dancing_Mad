@@ -846,8 +846,6 @@ setInterval(()=>{
 
 /* 矢印配置 */
 
-let nextRole = 0;
-
 const field =
     document.getElementById("field");
 
@@ -855,6 +853,18 @@ initStaticField();
 
 const retryButton =
     document.getElementById("retry");
+
+function getNextRoleIndex(){
+    const unassigned = roles
+        .map((role,index)=>({ role, index }))
+        .filter(({ role }) => role.x === null);
+    if(unassigned.length === 0) return null;
+    unassigned.sort((a,b) => {
+        const diff = a.role.time - b.role.time;
+        return diff !== 0 ? diff : a.index - b.index;
+    });
+    return unassigned[0].index;
+}
 
 const actionMessage =
     document.getElementById("action-message");
@@ -957,7 +967,8 @@ field.addEventListener("click",(e)=>{
 
     if(debugMode) return;
 
-    if(nextRole >= roles.length){
+    const roleIndex = getNextRoleIndex();
+    if(roleIndex === null){
         return;
     }
 
@@ -970,7 +981,7 @@ field.addEventListener("click",(e)=>{
     marker.className = "marker";
 
     marker.textContent =
-        roles[nextRole].arrow;
+        roles[roleIndex].arrow;
 
     marker.style.left =
         (e.clientX - rect.left) + "px";
@@ -980,19 +991,18 @@ field.addEventListener("click",(e)=>{
 
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    roles[nextRole].x = x;
-    roles[nextRole].y = y;
+    roles[roleIndex].x = x;
+    roles[roleIndex].y = y;
 
-    const correct = isCorrectPlacement(roles[nextRole], nextRole);
+    const correct = isCorrectPlacement(roles[roleIndex], roleIndex);
     marker.className = `marker ${correct ? "correct" : "wrong"}`;
     field.appendChild(marker);
 
     drawRoles();
     updateLog();
 
-    nextRole++;
-
-    if(nextRole >= roles.length){
+    const allAssigned = roles.every(role => role.x !== null);
+    if(allAssigned){
         showResultImage();
     }
 });
