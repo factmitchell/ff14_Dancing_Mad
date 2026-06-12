@@ -395,40 +395,12 @@
                 if (currentTowerHit % 2 === 0) {
                     const mec = player.debuff.mechanic || 'none';
 
-                    // KTDN式: 偶数塔の左右は「前の奇数塔の下のプレイヤー」で決定
-                    // 前の塔の左下(TH_扇AoE)・右下(DPS_円AoE)が今回は対角へ移動
-                    // そのペアパートナーは元のサイドを引き継ぐ
+                    // KTDN式: 偶数塔の左右はgetEvenHitSideAssignmentで決定
+                    // 奇数→偶数: 偏りなし=全員同サイド維持, 偏りあり=下のプレイヤーが入れ替わる
                     if (towerStyle === 'KTDN') {
-                        const prevOddHit = getPreviousSameGroupOddHit(player.debuff.group, currentTowerHit);
-                        if (prevOddHit !== null) {
-                            const prevOrd    = getGroupHitOrdinal(player.debuff.group, prevOddHit);
-                            const prevAssign = towerDebuffAssignments[player.debuff.group][prevOrd] || {};
-                            // 前の塔の左下: TH側（TANK/HEALER）で扇AoEだったプレイヤー
-                            const prevLeftBottomId = players.find(p =>
-                                p.debuff.group === player.debuff.group &&
-                                (p.role === 'TANK' || p.role === 'HEALER') &&
-                                prevAssign[p.id] === '扇AoE'
-                            )?.id;
-                            // 前の塔の右下: DPS側で円AoEだったプレイヤー
-                            const prevRightBottomId = players.find(p =>
-                                p.debuff.group === player.debuff.group &&
-                                p.role === 'DPS' &&
-                                prevAssign[p.id] === '円AoE'
-                            )?.id;
-                            // 下のプレイヤー本人 → 対角（反対サイド）へ
-                            if (player.id === prevLeftBottomId)  return `active_RIGHT_${mec}`;
-                            if (player.id === prevRightBottomId) return `active_LEFT_${mec}`;
-                            // そのペアパートナー → 元のサイドを引き継ぐ
-                            const leftPartner = prevLeftBottomId
-                                ? pairGroups.find(pair => pair.includes(prevLeftBottomId))?.find(id => id !== prevLeftBottomId)
-                                : null;
-                            const rightPartner = prevRightBottomId
-                                ? pairGroups.find(pair => pair.includes(prevRightBottomId))?.find(id => id !== prevRightBottomId)
-                                : null;
-                            if (player.id === leftPartner)  return `active_LEFT_${mec}`;
-                            if (player.id === rightPartner) return `active_RIGHT_${mec}`;
-                        }
-                        // 前の奇数塔がない場合（後組ordinal1など）はKTヤーン式と同じ
+                        const sideAssign = getEvenHitSideAssignment(player.debuff.group, currentTowerHit);
+                        const side = sideAssign[player.id];
+                        if (side !== undefined) return `active_${side}_${mec}`;
                     }
 
                     // KTヤーン式（またはKTDN式のordinal1フォールバック）
@@ -448,21 +420,11 @@
                 // 奇数ヒット
                 const oddMec = player.debuff.mechanic || 'none';
                 if (towerStyle === 'KTDN') {
-                    // KTDN式: 前の偶数塔の下のプレイヤーが今回は逆サイドへ移動
-                    const prevEvenHit = getPreviousSameGroupEvenHit(player.debuff.group, currentTowerHit);
-                    if (prevEvenHit !== null) {
-                        const sideAssign = getEvenHitSideAssignment(player.debuff.group, prevEvenHit);
-                        const prevSide = sideAssign[player.id];
-                        if (prevSide !== undefined) {
-                            const prevEvenOrd = getGroupHitOrdinal(player.debuff.group, prevEvenHit);
-                            const prevEvenAssign = towerDebuffAssignments[player.debuff.group][prevEvenOrd] || {};
-                            const wasAtBottom = prevEvenAssign[player.id] === '円AoE';
-                            // 下(円AoE)だったプレイヤー → 逆サイド, 上(扇AoE)だったプレイヤー → 同サイド
-                            const goLeft = wasAtBottom ? prevSide !== 'LEFT' : prevSide === 'LEFT';
-                            return `active_${goLeft ? 'TH' : 'DPS'}_${oddMec}`;
-                        }
-                    }
-                    // 前の偶数塔がない場合はロールベース（KTヤーン式と同じ）
+                    // KTDN式: 奇数塔の左右はgetOddHitSideAssignmentで決定
+                    // 扇AoE→常に左下, 円AoE→常に右下, 頭割り→偏りに応じてサイド決定
+                    const sideAssign = getOddHitSideAssignment(player.debuff.group, currentTowerHit);
+                    const side = sideAssign[player.id];
+                    if (side !== undefined) return `active_${side === 'LEFT' ? 'TH' : 'DPS'}_${oddMec}`;
                 }
                 return `${status}_${roleType}_${oddMec}`;
             }
@@ -517,10 +479,8 @@
             odd: {
                 'active_TH_頭割り':  P.O_TH_頭割り,
                 'active_TH_扇AoE':   P.O_TH_扇AoE,
-                'active_TH_円AoE':   P.O_TH_扇AoE,   // KTDN式: DPSが左サイドに入り円AoEを持つ場合→左下
                 'active_DPS_頭割り': P.O_DPS_頭割り,
                 'active_DPS_円AoE':  P.O_DPS_円AoE,
-                'active_DPS_扇AoE':  P.O_DPS_円AoE,  // KTDN式: THが右サイドに入り扇AoEを持つ場合→右下
                 'inactive_TANK':   P.O_WAIT_TANK,
                 'inactive_HEALER': P.O_WAIT_HEALER,
                 'inactive_MELEE':  P.O_WAIT_MELEE,
@@ -575,36 +535,80 @@
             return null;
         }
 
-        // KTDN式用: 指定偶数ヒットでの各プレイヤーの左右サイドを返す { [id]: 'LEFT'|'RIGHT' }
-        function getEvenHitSideAssignment(group, evenHit) {
-            const result = {};
+        // KTDN式用: 指定奇数ヒットでの各プレイヤーの左右サイドを返す { [id]: 'LEFT'|'RIGHT' }
+        //
+        // 偶数→奇数ルール:
+        //   扇AoE → 常に LEFT(左塔下)  ← 絶対ルール（KTヤーン/KTDN共通）
+        //   円AoE → 常に RIGHT(右塔下) ← 絶対ルール
+        //   頭割り×2 の左右:
+        //     ・前の偶数塔で頭割り2人が別サイド(偏りなし) → 前の偶数塔と同サイド維持
+        //     ・前の偶数塔で頭割り2人が同サイド(偏りあり) →
+        //         そのサイドの下(円AoE)だった頭割りプレイヤーが逆サイドへ
+        //         そのサイドの上(扇AoE)だった頭割りプレイヤーはそのまま
+        function getOddHitSideAssignment(group, oddHit) {
             const groupPlayers = players.filter(p => p.debuff.group === group);
-            const evenOrd = getGroupHitOrdinal(group, evenHit);
-            const evenAssign = towerDebuffAssignments[group][evenOrd] || {};
+            const oddOrd = getGroupHitOrdinal(group, oddHit);
+            const oddAssign = towerDebuffAssignments[group][oddOrd] || {};
+            const result = {};
+
+            // 扇AoE→LEFT, 円AoE→RIGHT は絶対
+            groupPlayers.forEach(p => {
+                const mec = oddAssign[p.id];
+                if (mec === '扇AoE') result[p.id] = 'LEFT';
+                else if (mec === '円AoE') result[p.id] = 'RIGHT';
+            });
+
+            const headPlayers = groupPlayers.filter(p => oddAssign[p.id] === '頭割り');
+            const prevEvenHit = getPreviousSameGroupEvenHit(group, oddHit);
+
+            if (prevEvenHit === null) {
+                // 初回奇数塔（前の偶数塔なし）: ロールベース
+                headPlayers.forEach(p => {
+                    result[p.id] = (p.role === 'TANK' || p.role === 'HEALER') ? 'LEFT' : 'RIGHT';
+                });
+            } else {
+                const prevEvenSides = getEvenHitSideAssignment(group, prevEvenHit);
+                const prevEvenOrd = getGroupHitOrdinal(group, prevEvenHit);
+                const prevEvenAssign = towerDebuffAssignments[group][prevEvenOrd] || {};
+                const side0 = prevEvenSides[headPlayers[0]?.id];
+                const side1 = prevEvenSides[headPlayers[1]?.id];
+                const hasBias = side0 !== undefined && side1 !== undefined && side0 === side1;
+                if (!hasBias) {
+                    // 偏りなし: 前の偶数塔と同サイド維持
+                    headPlayers.forEach(p => {
+                        result[p.id] = prevEvenSides[p.id] ??
+                            ((p.role === 'TANK' || p.role === 'HEALER') ? 'LEFT' : 'RIGHT');
+                    });
+                } else {
+                    // 偏りあり: 前の偶数塔でそのサイドの下(円AoE)にいた頭割りが逆サイドへ
+                    const biasedSide = side0;
+                    headPlayers.forEach(p => {
+                        const wasBottom = prevEvenAssign[p.id] === '円AoE';
+                        result[p.id] = wasBottom
+                            ? (biasedSide === 'LEFT' ? 'RIGHT' : 'LEFT')
+                            : biasedSide;
+                    });
+                }
+            }
+            return result;
+        }
+
+        // KTDN式用: 指定偶数ヒットでの各プレイヤーの左右サイドを返す { [id]: 'LEFT'|'RIGHT' }
+        //
+        // 奇数→偶数ルール:
+        //   偏りなし(前の奇数塔のLEFT/RIGHTそれぞれのプレイヤーが異なるデバフ) → 全員同サイド維持
+        //   偏りあり(前の奇数塔で同サイドの2人が同じ偶数デバフ) →
+        //     前の奇数塔で下だった(扇AoE or 円AoE)プレイヤーが逆サイドへ
+        //     前の奇数塔で上だった(頭割り)プレイヤーはそのまま
+        function getEvenHitSideAssignment(group, evenHit) {
+            const groupPlayers = players.filter(p => p.debuff.group === group);
             const prevOddHit = getPreviousSameGroupOddHit(group, evenHit);
 
-            if (prevOddHit !== null) {
-                // KTDN式: 前の奇数塔の下のプレイヤーが今回の偶数塔で左右を入れ替える
-                const prevOrd = getGroupHitOrdinal(group, prevOddHit);
-                const prevAssign = towerDebuffAssignments[group][prevOrd] || {};
-                const prevLeftBottomId = groupPlayers.find(p =>
-                    (p.role === 'TANK' || p.role === 'HEALER') && prevAssign[p.id] === '扇AoE'
-                )?.id;
-                const prevRightBottomId = groupPlayers.find(p =>
-                    p.role === 'DPS' && prevAssign[p.id] === '円AoE'
-                )?.id;
-                const leftPartner = prevLeftBottomId
-                    ? pairGroups.find(pair => pair.includes(prevLeftBottomId))?.find(id => id !== prevLeftBottomId)
-                    : null;
-                const rightPartner = prevRightBottomId
-                    ? pairGroups.find(pair => pair.includes(prevRightBottomId))?.find(id => id !== prevRightBottomId)
-                    : null;
-                if (prevLeftBottomId)  result[prevLeftBottomId] = 'RIGHT';
-                if (prevRightBottomId) result[prevRightBottomId] = 'LEFT';
-                if (leftPartner)  result[leftPartner]  = 'LEFT';
-                if (rightPartner) result[rightPartner] = 'RIGHT';
-            } else {
-                // KTヤーン式フォールバック（前の奇数塔がない場合 = 後組ordinal1など）
+            if (prevOddHit === null) {
+                // KTヤーン式フォールバック（後組ordinal1など、前の奇数塔がない場合）
+                const result = {};
+                const evenOrd = getGroupHitOrdinal(group, evenHit);
+                const evenAssign = towerDebuffAssignments[group][evenOrd] || {};
                 groupPlayers.forEach(p => {
                     const mec = evenAssign[p.id];
                     const pairIdx = pairGroups.findIndex(pair => pair.includes(p.id));
@@ -615,6 +619,37 @@
                                    (role === 'TANK'   && !isCollision) ||
                                    (role === 'MELEE'  && isCollision);
                     result[p.id] = goLeft ? 'LEFT' : 'RIGHT';
+                });
+                return result;
+            }
+
+            // 前の奇数塔でのサイド（扇AoE=LEFT, 円AoE=RIGHT 絶対 + 頭割りはbias判定済み）
+            const prevOddSides = getOddHitSideAssignment(group, prevOddHit);
+
+            // 今回の偶数塔デバフ
+            const evenOrd = getGroupHitOrdinal(group, evenHit);
+            const evenAssign = towerDebuffAssignments[group][evenOrd] || {};
+
+            // 偏り(bias)チェック: 前の奇数塔でLEFTだった2人の偶数デバフが同じか
+            const leftPlayers = groupPlayers.filter(p => prevOddSides[p.id] === 'LEFT');
+            const hasBias = leftPlayers.length === 2 &&
+                evenAssign[leftPlayers[0].id] === evenAssign[leftPlayers[1].id];
+
+            const result = {};
+            if (!hasBias) {
+                // 偏りなし: 全員前の奇数塔と同サイド維持
+                groupPlayers.forEach(p => result[p.id] = prevOddSides[p.id]);
+            } else {
+                // 偏りあり: 前の奇数塔で下(扇AoE or 円AoE)だったプレイヤーが逆サイドへ
+                // 上(頭割り)だったプレイヤーはそのまま
+                const prevOddOrd = getGroupHitOrdinal(group, prevOddHit);
+                const prevOddAssign = towerDebuffAssignments[group][prevOddOrd] || {};
+                groupPlayers.forEach(p => {
+                    const prevMec = prevOddAssign[p.id];
+                    const prevSide = prevOddSides[p.id];
+                    result[p.id] = (prevMec === '扇AoE' || prevMec === '円AoE')
+                        ? (prevSide === 'LEFT' ? 'RIGHT' : 'LEFT')
+                        : prevSide;
                 });
             }
             return result;
@@ -1357,31 +1392,10 @@
                     assignment[all[2]] = '扇AoE';  assignment[all[3]] = '円AoE';
                 }
             } else {
-                // 偶数回（頭割り無）: 円AoE × 2 + 扇AoE × 2
-                if (towerStyle === 'KTDN') {
-                    // KTDN式: 各サイド(LEFT/RIGHT)に円AoEと扇AoEを1つずつ配置
-                    // → 次の奇数塔で「下のプレイヤーが逆サイドへ」ルールが全員に機能し
-                    //   4人が同サイドに集まる(4/0スプリット)を防ぐ
-                    const group = getTowerGroupByHit(hit);
-                    const sideAssign = getEvenHitSideAssignment(group, hit);
-                    const leftPlayers  = shuffle(groupPlayers.filter(p => sideAssign[p.id] === 'LEFT'));
-                    const rightPlayers = shuffle(groupPlayers.filter(p => sideAssign[p.id] === 'RIGHT'));
-                    if (leftPlayers.length === 2 && rightPlayers.length === 2) {
-                        assignment[leftPlayers[0].id]  = '円AoE';
-                        assignment[leftPlayers[1].id]  = '扇AoE';
-                        assignment[rightPlayers[0].id] = '円AoE';
-                        assignment[rightPlayers[1].id] = '扇AoE';
-                    } else {
-                        // フォールバック: サイド情報が揃わない場合はランダム
-                        const all = shuffle(groupPlayers.map(p => p.id));
-                        assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
-                        assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
-                    }
-                } else {
-                    const all = shuffle(groupPlayers.map(p => p.id));
-                    assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
-                    assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
-                }
+                // 偶数回（頭割り無）: 円AoE × 2 + 扇AoE × 2（ランダム配置）
+                const all = shuffle(groupPlayers.map(p => p.id));
+                assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
+                assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
             }
             return assignment;
         }
