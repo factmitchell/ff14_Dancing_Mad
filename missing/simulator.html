@@ -1431,7 +1431,7 @@
                     if (r === 'correct') html += ' &nbsp;|&nbsp; <span style="color:#7fff7f">✓ 誘導正解！</span>';
                     else                 html += ` &nbsp;|&nbsp; <span style="color:#ff4444">✗ 誘導不正解 — ${guidanceCast === '過去の終焉' ? '南(South)' : '北(North)'}が正解</span>`;
                 } else if (guidanceSelected) {
-                    html += ' &nbsp;|&nbsp; <span style="color:#ffd700">選択済み → 「答え合わせ」を押してください</span>';
+                    html += ' &nbsp;|&nbsp; <span style="color:#ffd700">選択済み → 再度クリック or 「答え合わせ」を押してください</span>';
                 } else {
                     html += ` &nbsp;|&nbsp; <span style="color:${castColor}">【誘導】<strong>${guidanceCast}</strong> — 北(N)か南(S)をクリック</span>`;
                 }
@@ -1441,7 +1441,7 @@
                     if (r === 'correct') html += ' &nbsp;|&nbsp; <span style="color:#7fff7f">✓ 正解！</span>';
                     else                 html += ' &nbsp;|&nbsp; <span style="color:#ff4444">✗ 不正解 — 緑のゾーンが正解です</span>';
                 } else if (practiceSelected) {
-                    html += ' &nbsp;|&nbsp; <span style="color:#ffd700">選択済み → 「答え合わせ」を押してください</span>';
+                    html += ' &nbsp;|&nbsp; <span style="color:#ffd700">選択済み → 再度クリック or 「答え合わせ」を押してください</span>';
                 } else {
                     html += ' &nbsp;|&nbsp; <span style="color:#888">番号ゾーンをクリックして位置を選択してください</span>';
                 }
