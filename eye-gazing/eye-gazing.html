@@ -141,6 +141,63 @@
         #btn-copy-log:hover {
             background: #446;
         }
+        #options-panel {
+            margin-bottom: 12px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            background: #1a1a2a;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            max-width: 750px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .opt-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .opt-title {
+            font-size: 11px;
+            color: #888;
+            font-weight: bold;
+            letter-spacing: 0.05em;
+            margin-bottom: 1px;
+        }
+        .opt-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .opt-label {
+            font-size: 11px;
+            color: #777;
+            min-width: 48px;
+            text-align: right;
+        }
+        .opt-btn {
+            background: #252535;
+            color: #666;
+            border: 1px solid #3a3a4a;
+            padding: 3px 9px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: normal;
+            transition: 0.15s;
+        }
+        .opt-btn:hover {
+            background: #303045;
+            color: #aaa;
+        }
+        .opt-btn.selected {
+            background: #1e3050;
+            color: #88bbff;
+            border-color: #3366aa;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +208,45 @@
         <button id="btn-start">開始</button>
         <button id="btn-reset">リセット</button>
         <button id="btn-debug">DEBUG: OFF</button>
+    </div>
+
+    <div id="options-panel">
+        <div class="opt-group">
+            <div class="opt-title">ファイガ</div>
+            <div class="opt-row">
+                <span class="opt-label">玉</span>
+                <button class="opt-btn selected" data-opt="figaOrb"     data-val="random">ランダム</button>
+                <button class="opt-btn"          data-opt="figaOrb"     data-val="blue">🔵 青玉</button>
+                <button class="opt-btn"          data-opt="figaOrb"     data-val="red">🔴 赤玉</button>
+            </div>
+            <div class="opt-row">
+                <span class="opt-label">マーカー</span>
+                <button class="opt-btn selected" data-opt="figaPattern" data-val="random">ランダム</button>
+                <button class="opt-btn"          data-opt="figaPattern" data-val="scatter">散会</button>
+                <button class="opt-btn"          data-opt="figaPattern" data-val="stack">頭割り</button>
+            </div>
+        </div>
+        <div class="opt-group">
+            <div class="opt-title">ブリザガ</div>
+            <div class="opt-row">
+                <span class="opt-label">玉</span>
+                <button class="opt-btn selected" data-opt="blizzOrb"    data-val="random">ランダム</button>
+                <button class="opt-btn"          data-opt="blizzOrb"    data-val="blue">🔵 青玉</button>
+                <button class="opt-btn"          data-opt="blizzOrb"    data-val="red">🔴 赤玉</button>
+            </div>
+            <div class="opt-row">
+                <span class="opt-label">方向</span>
+                <button class="opt-btn selected" data-opt="blizzDir"    data-val="random">ランダム</button>
+                <button class="opt-btn"          data-opt="blizzDir"    data-val="backslash">╲ 左斜め</button>
+                <button class="opt-btn"          data-opt="blizzDir"    data-val="slash">╱ 右斜め</button>
+            </div>
+            <div class="opt-row">
+                <span class="opt-label">表示</span>
+                <button class="opt-btn selected" data-opt="blizzOffset" data-val="random">ランダム</button>
+                <button class="opt-btn"          data-opt="blizzOffset" data-val="0">下から帯</button>
+                <button class="opt-btn"          data-opt="blizzOffset" data-val="1">下から安置</button>
+            </div>
+        </div>
     </div>
 
     <div id="sizeControl">
@@ -277,6 +373,28 @@
         roleIcons.HEALER.src = '../asset/FFXIVIcons JobIcons/00_ROLE/HealerRole.png';
         roleIcons.DPS.src    = '../asset/FFXIVIcons JobIcons/00_ROLE/DPSRole.png';
 
+        // ── オプション固定値 (null = ランダム) ───────────────────────────
+        const fixedOpts = {
+            figaOrb:     null,
+            figaPattern: null,
+            blizzOrb:    null,
+            blizzDir:    null,
+            blizzOffset: null,
+        };
+
+        document.querySelectorAll('.opt-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const opt = btn.dataset.opt;
+                const val = btn.dataset.val;
+                // 同じグループの selected を外して自分に付ける
+                document.querySelectorAll(`.opt-btn[data-opt="${opt}"]`)
+                    .forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                fixedOpts[opt] = val === 'random' ? null
+                    : (opt === 'blizzOffset' ? Number(val) : val);
+            });
+        });
+
         // ── デバッグモード ────────────────────────────────────────────────
         let debugMode    = false;
         let draggedMarker = null;
@@ -295,9 +413,9 @@
         let blizzagaEffectiveOffset = null;
 
         function initBlizzaga() {
-            blizzagaDir             = Math.random() < 0.5 ? 'backslash' : 'slash';
-            blizzagaOffset          = Math.floor(Math.random() * 2);
-            blizzagaOrbColor        = Math.random() < 0.5 ? 'blue' : 'red';
+            blizzagaDir      = fixedOpts.blizzDir    ?? (Math.random() < 0.5 ? 'backslash' : 'slash');
+            blizzagaOffset   = fixedOpts.blizzOffset !== null ? fixedOpts.blizzOffset : Math.floor(Math.random() * 2);
+            blizzagaOrbColor = fixedOpts.blizzOrb    ?? (Math.random() < 0.5 ? 'blue' : 'red');
             blizzagaEffectiveOffset = blizzagaOrbColor === 'red'
                 ? 1 - blizzagaOffset
                 : blizzagaOffset;
@@ -418,8 +536,8 @@
         function startMechanic() {
             initBlizzaga();
 
-            mechPattern      = Math.random() < 0.5 ? 'scatter' : 'stack';
-            orbColor         = Math.random() < 0.5 ? 'blue' : 'red';
+            mechPattern      = fixedOpts.figaPattern ?? (Math.random() < 0.5 ? 'scatter' : 'stack');
+            orbColor         = fixedOpts.figaOrb     ?? (Math.random() < 0.5 ? 'blue' : 'red');
             effectivePattern = (orbColor === 'red')
                 ? (mechPattern === 'scatter' ? 'stack' : 'scatter')
                 : mechPattern;
