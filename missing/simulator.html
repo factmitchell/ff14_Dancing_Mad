@@ -115,8 +115,9 @@
             font-size: 12px; font-weight: bold; transition: 0.2s;
         }
         .diff-btn:hover { background: #444; }
-        .diff-btn.easy.selected  { background: #1a3a5a; color: #fff; border-color: #64b5f6; }
-        .diff-btn.hard.selected  { background: #5a1a1a; color: #fff; border-color: #ff6b6b; }
+        .diff-btn.easy.selected     { background: #1a3a5a; color: #fff; border-color: #64b5f6; }
+        .diff-btn.hard.selected     { background: #5a1a1a; color: #fff; border-color: #ff6b6b; }
+        .diff-btn.ultimate.selected { background: #3a0a5a; color: #fff; border-color: #cc66ff; }
         .group-btn {
             background: #333; color: #ccc; border: 1px solid #555;
             padding: 4px 10px; border-radius: 4px; cursor: pointer;
@@ -138,6 +139,45 @@
             65%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
             100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
         }
+        @keyframes ultimateFailedIn {
+            0%   { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        #ultimate-failed-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.88);
+            z-index: 30;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #ultimate-failed-overlay.visible {
+            display: flex;
+            animation: ultimateFailedIn 0.5s ease-out forwards;
+        }
+        #ultimate-failed-text {
+            font-size: 52px;
+            font-weight: bold;
+            color: #ff3333;
+            text-shadow: 0 0 24px #ff0000, 0 0 48px #ff000088;
+            letter-spacing: 4px;
+        }
+        #btn-retry {
+            margin-top: 24px;
+            padding: 12px 36px;
+            font-size: 18px;
+            font-weight: bold;
+            background: #2a0a0a;
+            color: #fff;
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        #btn-retry:hover { background: #4a1a1a; border-color: #ff8888; }
         @keyframes towerPop {
             0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
             20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
@@ -279,8 +319,9 @@
         </div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
             <span style="font-size:12px;color:#888;">難易度:</span>
-            <button class="diff-btn easy"           id="btn-diff-easy" data-diff="easy">Easy</button>
-            <button class="diff-btn hard selected"  id="btn-diff-hard" data-diff="hard">Hard</button>
+            <button class="diff-btn easy"               id="btn-diff-easy"     data-diff="easy">Easy</button>
+            <button class="diff-btn hard"               id="btn-diff-hard"     data-diff="hard">Hard</button>
+            <button class="diff-btn ultimate selected"  id="btn-diff-ultimate" data-diff="ultimate">Ultimate</button>
             <span style="font-size:12px;color:#888;margin-left:10px;">グループ:</span>
             <button class="group-btn selected" id="btn-group-all"  data-group="全部">全部</button>
             <button class="group-btn"          id="btn-group-saki" data-group="先組">先組</button>
@@ -307,6 +348,10 @@
             <canvas id="fieldCanvas" width="750" height="750"></canvas>
             <div id="practice-feedback"></div>
             <div id="tower-popup"></div>
+            <div id="ultimate-failed-overlay">
+                <div id="ultimate-failed-text">全滅した</div>
+                <button id="btn-retry">再挑戦</button>
+            </div>
         </div>
         <div id="statePanel" style="background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; min-width: 220px;"></div>
     </div>
@@ -980,6 +1025,7 @@
             });
 
             drawPracticeOverlay();
+            drawTimerOverlay();
         }
 
         function drawGimmickGuides() {
@@ -1155,8 +1201,13 @@
         let practiceChecked  = false;
         let practiceScores   = {};    // { hitNum: 'correct'|'wrong' }
         let practiceFeedbackTimer = null;
-        let practiceDifficulty = 'hard'; // 'easy' | 'hard'
-        let practiceGroup = '全部';       // '全部' | '先組' | '後組'
+        let practiceDifficulty = 'ultimate'; // 'easy' | 'hard' | 'ultimate'
+        let practiceGroup = '全部';           // '全部' | '先組' | '後組'
+
+        // Ultimateタイマー
+        const ULTIMATE_TIMER_SEC = 5;
+        let practiceTimerInterval = null;
+        let practiceTimerRemaining = ULTIMATE_TIMER_SEC;
 
         // 過去/未来誘導フェーズ
         let guidanceEnabled  = true;
@@ -1168,6 +1219,72 @@
         let guidanceScores   = {};      // { evenHit: 'correct'|'wrong' }
         const GUIDANCE_SOUTH = { x: 320, y: 400 };  // 過去の終焉 → 南集合
         const GUIDANCE_NORTH = { x: 280, y: 200 };  // 未来の終焉 → 北集合
+
+        // ── Ultimateタイマー ────────────────────────────────────────────────
+
+        function startPracticeTimer() {
+            if (practiceDifficulty !== 'ultimate') return;
+            stopPracticeTimer();
+            practiceTimerRemaining = ULTIMATE_TIMER_SEC;
+            drawField();
+            practiceTimerInterval = setInterval(() => {
+                practiceTimerRemaining--;
+                drawField();
+                if (practiceTimerRemaining <= 0) {
+                    stopPracticeTimer();
+                    handlePracticeTimeout();
+                }
+            }, 1000);
+        }
+
+        function stopPracticeTimer() {
+            if (practiceTimerInterval) {
+                clearInterval(practiceTimerInterval);
+                practiceTimerInterval = null;
+            }
+            practiceTimerRemaining = ULTIMATE_TIMER_SEC;
+        }
+
+        function handlePracticeTimeout() {
+            if (guidancePhase) {
+                if (guidanceChecked) return;
+                guidanceChecked = true;
+                if (guidanceNextHit !== null) guidanceScores[guidanceNextHit - 1] = 'wrong';
+                alignAllPlayers();
+                drawField();
+                showGuidanceFeedback(false);
+            } else if (practiceMode && currentTowerHit > 0 && !practiceChecked) {
+                practiceChecked = true;
+                practiceScores[currentTowerHit] = 'wrong';
+                alignAllPlayers();
+                drawField();
+                showPracticeFeedback(false);
+            }
+        }
+
+        function drawTimerOverlay() {
+            if (practiceDifficulty !== 'ultimate' || !practiceMode) return;
+            if (practiceTimerInterval === null) return;
+            if (practiceChecked || guidanceChecked) return;
+
+            const pct = Math.max(practiceTimerRemaining, 0) / ULTIMATE_TIMER_SEC;
+            const col = pct > 0.5 ? '#7fff7f' : pct > 0.25 ? '#ffd700' : '#ff4444';
+            const barW = cssSize * 0.55;
+            const barH = s(7);
+            const barX = (cssSize - barW) / 2;
+            const barY = cssSize - s(30);
+
+            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+            ctx.fillRect(barX - s(2), barY - s(2), barW + s(4), barH + s(4));
+            ctx.fillStyle = col;
+            ctx.fillRect(barX, barY, barW * pct, barH);
+
+            ctx.fillStyle = col;
+            ctx.font = scaledFont(16, 'bold');
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(Math.max(practiceTimerRemaining, 0)), cssSize / 2, barY - s(13));
+        }
 
         // ── 過去/未来誘導フェーズ ───────────────────────────────────────────
 
@@ -1188,6 +1305,7 @@
             showGuidanceCastPopup();
             updatePracticeStatus();
             drawField();
+            startPracticeTimer();
         }
 
         function showGuidanceCastPopup() {
@@ -1224,6 +1342,7 @@
 
         function checkGuidanceAnswer() {
             if (!guidancePhase || guidanceChecked || !guidanceSelected) return false;
+            stopPracticeTimer();
             const correct = guidanceCast === '過去の終焉' ? guidanceSelected === 'SOUTH' : guidanceSelected === 'NORTH';
             guidanceChecked = true;
             guidanceScores[guidanceNextHit - 1] = correct ? 'correct' : 'wrong';
@@ -1243,6 +1362,11 @@
             drawField();
             practiceFeedbackTimer = setTimeout(() => {
                 el.style.display = 'none';
+                if (!correct && practiceDifficulty === 'ultimate') {
+                    alignAllPlayers();
+                    showUltimateFailed();
+                    return;
+                }
                 guidancePhase = false;
                 if (guidanceNextHit !== null) {
                     setTowerHit(guidanceNextHit);
@@ -1371,6 +1495,7 @@
 
         function setPracticeJob(id) {
             if (practiceJob === id) { exitPracticeMode(); return; }
+            hideUltimateFailed();
             practiceMode     = true;
             practiceJob      = id;
             practiceSelected = null;
@@ -1388,6 +1513,8 @@
         }
 
         function exitPracticeMode() {
+            stopPracticeTimer();
+            hideUltimateFailed();
             practiceMode     = false;
             practiceJob      = null;
             practiceSelected = null;
@@ -1439,6 +1566,7 @@
 
         function checkPracticeAnswer() {
             if (!practiceMode || currentTowerHit === 0 || !practiceSelected) return false;
+            stopPracticeTimer();
             const correct = practiceSelected.playerIds.includes(practiceJob);
             practiceChecked = true;
             practiceScores[currentTowerHit] = correct ? 'correct' : 'wrong';
@@ -1462,6 +1590,19 @@
         }
 
         let slideInProgress = false;
+        let ultimateFailed = false;
+
+        function showUltimateFailed() {
+            ultimateFailed = true;
+            stopPracticeTimer();
+            const overlay = document.getElementById('ultimate-failed-overlay');
+            overlay.classList.add('visible');
+        }
+        function hideUltimateFailed() {
+            ultimateFailed = false;
+            const overlay = document.getElementById('ultimate-failed-overlay');
+            overlay.classList.remove('visible');
+        }
 
         // プレイヤーを targetX/Y へ duration ms かけてスライド移動し、完了後 onComplete を呼ぶ
         function slidePlayerTo(player, targetX, targetY, duration, onComplete) {
@@ -1508,9 +1649,15 @@
                 el.style.display = 'none';
                 if (!practiceMode) return;
                 if (!correct) {
-                    // 不正解: 他プレイヤーを正解位置へ即移動、練習プレイヤーはスライド
+                    if (practiceDifficulty === 'ultimate') {
+                        alignAllPlayers();
+                        showUltimateFailed();
+                        return;
+                    }
+                    // 不正解かつゾーン選択済み: スライドで正解位置へ移動
+                    // タイムアウト(未選択)の場合はスライドをスキップ
                     const practicePlayer = players.find(p => p.id === practiceJob);
-                    if (practicePlayer) {
+                    if (practicePlayer && practiceSelected) {
                         const wrongX = practicePlayer.x;
                         const wrongY = practicePlayer.y;
                         alignAllPlayers(); // 他プレイヤーを正解位置へ
@@ -1869,7 +2016,8 @@
                     practiceFeedbackTimer = null;
                     document.getElementById('practice-feedback').style.display = 'none';
                 }
-                // 誘導フェーズをリセット
+                // 誘導フェーズ・タイマーをリセット
+                stopPracticeTimer();
                 guidancePhase    = false;
                 guidanceChecked  = false;
                 guidanceSelected = null;
@@ -1878,7 +2026,8 @@
                 updatePracticeStatus();
                 if (currentTowerHit > 0 && currentTowerHit !== prev) {
                     showTowerPopup(currentTowerHit);
-                    if (practiceDifficulty === 'hard') showHardIcons();
+                    if (practiceDifficulty === 'hard' || practiceDifficulty === 'ultimate') showHardIcons();
+                    startPracticeTimer();
                 }
             }
             updateTowerStatus();
@@ -1959,6 +2108,7 @@
         }
 
         function generateDebuff() {
+            hideUltimateFailed();
             const maxRetry = 20;
             for (let attempt = 0; attempt < maxRetry; attempt++) {
                 players = clonePlayers(initialPlayerState, getScaleFactor());
@@ -2134,7 +2284,7 @@
                         : '未割当';
                     const activeBorder = isActivePlayer ? 'border-left:3px solid #ffd700;padding-left:4px;' : '';
                     // hard mode: デバフ情報をマスク
-                    const maskDebuff = practiceMode && practiceDifficulty === 'hard' && !practiceChecked;
+                    const maskDebuff = practiceMode && (practiceDifficulty === 'hard' || practiceDifficulty === 'ultimate') && !practiceChecked;
                     html += `<div style="${activeBorder}">&nbsp;&nbsp;<span style="color:${color};font-weight:bold">${player.id}</span>: ${groupLabel}`;
                     if (displayMec && !maskDebuff) {
                         html += ` <span style="color:${mecColor}">${displayMec} ${emoji}</span>`;
@@ -2299,6 +2449,11 @@
         document.getElementById('guidance-toggle').addEventListener('change', e => {
             guidanceEnabled = e.target.checked;
             drawField();
+        });
+
+        document.getElementById('btn-retry').addEventListener('click', () => {
+            hideUltimateFailed();
+            generateDebuff();
         });
 
         // スマホではキャンバスを画面幅に合わせて自動調整
