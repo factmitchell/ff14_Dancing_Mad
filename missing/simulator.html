@@ -1595,6 +1595,7 @@
         function showUltimateFailed() {
             ultimateFailed = true;
             stopPracticeTimer();
+            drawField();
             const overlay = document.getElementById('ultimate-failed-overlay');
             overlay.classList.add('visible');
         }
