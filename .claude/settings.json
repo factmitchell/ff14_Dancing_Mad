@@ -5,6 +5,9 @@
       "Skill(run:*)",
       "PowerShell(Get-Command chrome, chromium, \"chromium-browser\", \"google-chrome\" -ErrorAction SilentlyContinue)",
       "Read(//c/Users/makot/AppData/Local/Temp/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\makot\\makoto_projects\\ff14_Dancing_Mad"
     ]
   }
 }

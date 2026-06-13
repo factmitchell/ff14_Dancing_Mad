@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FF14 ギミックシミュレーター</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1e1e24;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #ff4a4a;
+        }
+        #sizeControl {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #222;
+            padding: 8px 10px;
+            border-radius: 8px;
+            color: #fff;
+        }
+        #sizeControl label {
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        #sizeControl input[type="range"] {
+            width: 180px;
+        }
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 50%;
+            overflow: hidden;
+            background: #111;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: #2a2a35;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        button {
+            background: #444454;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #55556c;
+        }
+        button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+        #btn-start {
+            background: #1e4a1e;
+            color: #7fff7f;
+            border: 1px solid #2e7c2e;
+        }
+        #btn-start:hover:not(:disabled) {
+            background: #2a6a2a;
+        }
+        #btn-debug {
+            background: #2a2a2a;
+            color: #666;
+            border: 1px solid #444;
+            font-size: 11px;
+            padding: 4px 10px;
+            margin-left: 8px;
+        }
+        #btn-debug.active {
+            background: #3a2a00;
+            color: #ffd700;
+            border-color: #ffd700;
+        }
+        #debug-panel {
+            display: none;
+            margin-top: 12px;
+            max-width: 750px;
+            width: 100%;
+            background: #1a1a0d;
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #ccc;
+            box-sizing: border-box;
+        }
+        #debug-panel.active {
+            display: block;
+        }
+        .debug-hint {
+            margin-bottom: 8px;
+            color: #ffd700;
+            font-weight: bold;
+        }
+        #debug-log {
+            width: 100%;
+            height: 230px;
+            background: #0d0d0a;
+            color: #7ec8e3;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        #btn-copy-log {
+            margin-top: 6px;
+            padding: 6px 14px;
+            font-size: 13px;
+            background: #335;
+            color: #7ec8e3;
+            border: 1px solid #7ec8e3;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        #btn-copy-log:hover {
+            background: #446;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>FF14 ギミックシミュレーター</h1>
+
+    <div id="controls">
+        <button id="btn-start">開始</button>
+        <button id="btn-reset">リセット</button>
+        <button id="btn-debug">DEBUG: OFF</button>
+    </div>
+
+    <div id="sizeControl">
+        <label for="fieldSizeSlider">フィールドサイズ: <span id="sizeLabel">600</span> px</label>
+        <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="600">
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="fieldCanvas" width="600" height="600"></canvas>
+    </div>
+
+    <div id="debug-panel">
+        <div class="debug-hint">🔧 フィールドマーカーをドラッグして位置を調整できます（プレイヤーも移動可）</div>
+        <textarea id="debug-log" readonly></textarea>
+        <button id="btn-copy-log">コードをコピー</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fieldCanvas');
+        const ctx = canvas.getContext('2d');
+        const BASE_CANVAS_SIZE = 600;
+        let cssSize = 600;
+        const dpr = window.devicePixelRatio || 1;
+        let centerX, centerY, radius;
+
+        function getScaleFactor() {
+            return cssSize / BASE_CANVAS_SIZE;
+        }
+
+        function s(value) {
+            return value * getScaleFactor();
+        }
+
+        function scaledFont(px, weight = '') {
+            const size = Math.max(8, Math.round(s(px)));
+            return `${weight ? weight + ' ' : ''}${size}px Arial`;
+        }
+
+        // ── フィールドマーカー定義 (ベース600座標) ───────────────────────────
+        // 配置: A=北, B=東, C=南, D=西 / 1=北西, 2=北東, 3=南東, 4=南西
+        const fieldMarkerData = [
+            { x: 300, y:  78, label: 'A', color: '#ff6090' },
+            { x: 385, y: 212, label: '2', color: '#ffd700' },
+            { x: 511, y: 300, label: 'B', color: '#ffa040' },
+            { x: 385, y: 388, label: '3', color: '#40c8ff' },
+            { x: 300, y: 522, label: 'C', color: '#40c8ff' },
+            { x: 215, y: 388, label: '4', color: '#c080ff' },
+            { x:  89, y: 300, label: 'D', color: '#c080ff' },
+            { x: 215, y: 212, label: '1', color: '#d0d0d0' },
+        ];
+
+        let markers = [];
+
+        function initMarkers(scale) {
+            markers = fieldMarkerData.map(m => ({ ...m, x: m.x * scale, y: m.y * scale }));
+        }
+
+        // ── プレイヤー定義 ────────────────────────────────────────────────
+        const roleColors = {
+            TANK:   '#4169e1',
+            HEALER: '#32cd32',
+            DPS:    '#dc143c',
+        };
+
+        function createPlayer(id, role, x, y) {
+            return { id, role, x, y, color: roleColors[role] };
+        }
+
+        const initialPlayerState = [
+            createPlayer('MT', 'TANK',   170, 470),
+            createPlayer('ST', 'TANK',   200, 470),
+            createPlayer('H1', 'HEALER', 250, 470),
+            createPlayer('H2', 'HEALER', 280, 470),
+            createPlayer('D1', 'DPS',    330, 470),
+            createPlayer('D2', 'DPS',    360, 470),
+            createPlayer('D3', 'DPS',    410, 470),
+            createPlayer('D4', 'DPS',    440, 470),
+        ];
+
+        function clonePlayers(source, scale = 1) {
+            return source.map(p => ({
+                ...JSON.parse(JSON.stringify(p)),
+                x: p.x * scale,
+                y: p.y * scale,
+            }));
+        }
+
+        let players = clonePlayers(initialPlayerState, getScaleFactor());
+
+        function updateCanvasSize(size) {
+            const scale = size / cssSize;
+            if (cssSize !== size) {
+                players.forEach(p => { p.x *= scale; p.y *= scale; });
+                markers.forEach(m => { m.x *= scale; m.y *= scale; });
+            }
+            cssSize = size;
+            canvas.style.width  = `${cssSize}px`;
+            canvas.style.height = `${cssSize}px`;
+            canvas.width  = cssSize * dpr;
+            canvas.height = cssSize * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            centerX = cssSize / 2;
+            centerY = cssSize / 2;
+            radius  = cssSize / 2 - s(20);
+        }
+
+        // ── ロールアイコン ────────────────────────────────────────────────
+        const roleIcons = {
+            TANK:   new Image(),
+            HEALER: new Image(),
+            DPS:    new Image(),
+        };
+        let loadedIcons = 0;
+        const onIconLoad = () => { loadedIcons++; if (loadedIcons === 3) drawField(); };
+        roleIcons.TANK.onload   = onIconLoad;
+        roleIcons.HEALER.onload = onIconLoad;
+        roleIcons.DPS.onload    = onIconLoad;
+        roleIcons.TANK.src   = '../asset/FFXIVIcons JobIcons/00_ROLE/TankRole.png';
+        roleIcons.HEALER.src = '../asset/FFXIVIcons JobIcons/00_ROLE/HealerRole.png';
+        roleIcons.DPS.src    = '../asset/FFXIVIcons JobIcons/00_ROLE/DPSRole.png';
+
+        // ── デバッグモード ────────────────────────────────────────────────
+        let debugMode    = false;
+        let draggedMarker = null;
+        let draggedPlayer = null;
+
+        // ════════════════════════════════════════════════════════════════════
+        // ファイガ ギミック
+        // ════════════════════════════════════════════════════════════════════
+        // 'idle' | 'showing' | 'damage'
+        let mechState        = 'idle';
+        let mechPattern      = null;   // 'scatter' | 'stack'  (マーカー表示)
+        let orbColor         = null;   // 'blue' | 'red'
+        let effectivePattern = null;   // 実際に発動するギミック (赤玉で反転)
+        let stackTarget1     = null;   // stack: MT/ST/H1/H2 から抽選
+        let stackTarget2     = null;   // stack: D1/D2/D3/D4 から抽選
+        let countdown        = 0;
+        let countdownInterval = null;
+
+        function startMechanic() {
+            mechPattern      = Math.random() < 0.5 ? 'scatter' : 'stack';
+            orbColor         = Math.random() < 0.5 ? 'blue' : 'red';
+            effectivePattern = (orbColor === 'red')
+                ? (mechPattern === 'scatter' ? 'stack' : 'scatter')
+                : mechPattern;
+
+            stackTarget1 = null;
+            stackTarget2 = null;
+            if (mechPattern === 'stack') {
+                const th  = players.filter(p => ['MT', 'ST', 'H1', 'H2'].includes(p.id));
+                const dps = players.filter(p => ['D1', 'D2', 'D3', 'D4'].includes(p.id));
+                stackTarget1 = th[Math.floor(Math.random() * th.length)];
+                stackTarget2 = dps[Math.floor(Math.random() * dps.length)];
+            }
+
+            mechState = 'showing';
+            countdown = 5;
+            document.getElementById('btn-start').disabled = true;
+
+            countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    mechState = 'damage';
+                    document.getElementById('btn-start').disabled = false;
+                }
+                drawField();
+            }, 1000);
+
+            drawField();
+        }
+
+        function resetMechanic() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            mechState        = 'idle';
+            mechPattern      = null;
+            orbColor         = null;
+            effectivePattern = null;
+            stackTarget1     = null;
+            stackTarget2     = null;
+            countdown        = 0;
+            document.getElementById('btn-start').disabled = false;
+        }
+
+        // ── ファイガ 描画 ─────────────────────────────────────────────────
+
+        function drawSpreadMarker(px, py) {
+            const mx = px;
+            const my = py - s(38);
+            const r  = s(11);
+            const al = s(9);
+
+            ctx.save();
+            ctx.shadowColor = '#ff8800';
+            ctx.shadowBlur  = s(6);
+
+            ctx.beginPath();
+            ctx.arc(mx, my, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 120, 0, 0.22)';
+            ctx.fill();
+            ctx.strokeStyle = '#ff9922';
+            ctx.lineWidth   = s(2);
+            ctx.stroke();
+
+            [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(([dx, dy]) => {
+                const sx = mx + dx * r * 0.3;
+                const sy = my + dy * r * 0.3;
+                const ex = mx + dx * (r + al);
+                const ey = my + dy * (r + al);
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(ex, ey);
+                ctx.strokeStyle = '#ffaa44';
+                ctx.lineWidth   = s(1.8);
+                ctx.stroke();
+                const px2 = -dy, py2 = dx;
+                ctx.beginPath();
+                ctx.moveTo(ex, ey);
+                ctx.lineTo(ex - dx * s(5) + px2 * s(3), ey - dy * s(5) + py2 * s(3));
+                ctx.lineTo(ex - dx * s(5) - px2 * s(3), ey - dy * s(5) - py2 * s(3));
+                ctx.closePath();
+                ctx.fillStyle = '#ffaa44';
+                ctx.fill();
+            });
+
+            ctx.restore();
+        }
+
+        function drawStackMarker(px, py) {
+            const mx = px;
+            const my = py - s(38);
+            const r  = s(12);
+
+            ctx.save();
+            ctx.shadowColor = '#4488ff';
+            ctx.shadowBlur  = s(8);
+
+            ctx.beginPath();
+            ctx.arc(mx, my, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(50, 100, 255, 0.22)';
+            ctx.fill();
+            ctx.strokeStyle = '#6699ff';
+            ctx.lineWidth   = s(2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(mx, my, r * 0.55, 0, Math.PI * 2);
+            ctx.strokeStyle = '#6699ff';
+            ctx.lineWidth   = s(1.5);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(mx, my, s(2.5), 0, Math.PI * 2);
+            ctx.fillStyle = '#aaccff';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawOrb() {
+            if (!orbColor) return;
+
+            if (orbColor === 'blue') {
+                const bx = centerX;
+                const by = centerY - s(55);
+                const r  = s(16);
+                const grd = ctx.createRadialGradient(bx, by, 0, bx, by, r * 2.5);
+                grd.addColorStop(0,   'rgba(160, 230, 255, 0.9)');
+                grd.addColorStop(0.4, 'rgba(60,  140, 255, 0.5)');
+                grd.addColorStop(1,   'rgba(0,   60,  200, 0)');
+                ctx.beginPath();
+                ctx.arc(bx, by, r * 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = grd;
+                ctx.fill();
+                ctx.save();
+                ctx.shadowColor = '#88ccff';
+                ctx.shadowBlur  = s(14);
+                ctx.beginPath();
+                ctx.arc(bx, by, r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(170, 235, 255, 0.92)';
+                ctx.fill();
+                ctx.restore();
+            } else {
+                // 赤玉: フィールド中央
+                const bx = centerX;
+                const by = centerY;
+                const r  = s(20);
+                const grd = ctx.createRadialGradient(bx, by, 0, bx, by, r * 3);
+                grd.addColorStop(0,   'rgba(255, 210, 80, 0.9)');
+                grd.addColorStop(0.3, 'rgba(255, 80,  20, 0.55)');
+                grd.addColorStop(1,   'rgba(200, 0,   0,  0)');
+                ctx.beginPath();
+                ctx.arc(bx, by, r * 3, 0, Math.PI * 2);
+                ctx.fillStyle = grd;
+                ctx.fill();
+                ctx.save();
+                ctx.shadowColor = '#ff6633';
+                ctx.shadowBlur  = s(20);
+                ctx.beginPath();
+                ctx.arc(bx, by, r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 110, 50, 0.9)';
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function drawBoss() {
+            const r = s(22);
+            ctx.save();
+            ctx.shadowColor = '#993333';
+            ctx.shadowBlur  = s(10);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(15, 5, 5, 0.88)';
+            ctx.fill();
+            ctx.strokeStyle = '#993333';
+            ctx.lineWidth   = s(3);
+            ctx.stroke();
+            ctx.restore();
+            ctx.fillStyle    = '#cc6666';
+            ctx.font         = scaledFont(9, 'bold');
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('BOSS', centerX, centerY);
+        }
+
+        function drawFigaDamageAreas() {
+            if (effectivePattern === 'scatter') {
+                const aoeR = s(85);
+                players.forEach(p => {
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, aoeR, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ff6600';
+                    ctx.fill();
+                    ctx.globalAlpha = 0.75;
+                    ctx.strokeStyle = '#ff9933';
+                    ctx.lineWidth   = s(2);
+                    ctx.stroke();
+                    ctx.restore();
+                });
+            } else {
+                const aoeR = s(70);
+                [stackTarget1, stackTarget2].forEach(t => {
+                    if (!t) return;
+                    const p = players.find(pl => pl.id === t.id);
+                    if (!p) return;
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, aoeR, 0, Math.PI * 2);
+                    ctx.fillStyle = '#4466ff';
+                    ctx.fill();
+                    ctx.globalAlpha = 0.75;
+                    ctx.strokeStyle = '#6699ff';
+                    ctx.lineWidth   = s(2);
+                    ctx.stroke();
+                    ctx.restore();
+                });
+            }
+        }
+
+        function drawFigaPlayerMarkers() {
+            if (mechState === 'idle') return;
+            players.forEach(player => {
+                if (mechPattern === 'scatter') {
+                    drawSpreadMarker(player.x, player.y);
+                } else {
+                    if (stackTarget1 && player.id === stackTarget1.id) drawStackMarker(player.x, player.y);
+                    if (stackTarget2 && player.id === stackTarget2.id) drawStackMarker(player.x, player.y);
+                }
+            });
+        }
+
+        function drawCountdown() {
+            if (mechState !== 'showing' || countdown <= 0) return;
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(centerX - s(38), s(14), s(76), s(34));
+            ctx.strokeStyle = 'rgba(255, 200, 0, 0.55)';
+            ctx.lineWidth   = s(1);
+            ctx.strokeRect(centerX - s(38), s(14), s(76), s(34));
+            ctx.fillStyle    = '#ffd700';
+            ctx.font         = scaledFont(20, 'bold');
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(countdown, centerX, s(31));
+            ctx.restore();
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // 共通描画
+        // ════════════════════════════════════════════════════════════════════
+
+        function drawMarkers() {
+            const mHalf = s(13);
+            markers.forEach(m => {
+                ctx.save();
+                ctx.shadowColor = m.color;
+                ctx.shadowBlur  = s(8);
+                ctx.fillStyle   = 'rgba(5, 5, 12, 0.88)';
+                ctx.fillRect(m.x - mHalf, m.y - mHalf, mHalf * 2, mHalf * 2);
+                ctx.strokeStyle = m.color;
+                ctx.lineWidth   = s(1.5);
+                ctx.strokeRect(m.x - mHalf, m.y - mHalf, mHalf * 2, mHalf * 2);
+                ctx.restore();
+
+                if (debugMode) {
+                    ctx.save();
+                    ctx.strokeStyle = '#ffd700';
+                    ctx.lineWidth   = s(1.5);
+                    ctx.setLineDash([s(3), s(3)]);
+                    const pad = s(4);
+                    ctx.strokeRect(m.x - mHalf - pad, m.y - mHalf - pad, (mHalf + pad) * 2, (mHalf + pad) * 2);
+                    ctx.setLineDash([]);
+                    ctx.restore();
+                }
+
+                ctx.fillStyle    = m.color;
+                ctx.font         = scaledFont(11, 'bold');
+                ctx.textAlign    = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(m.label, m.x, m.y);
+            });
+        }
+
+        function drawField() {
+            ctx.clearRect(0, 0, cssSize, cssSize);
+
+            // フィールド背景
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#222';
+            ctx.fill();
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth   = s(3);
+            ctx.stroke();
+
+            // グリッド線
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth   = s(1);
+            for (let r = s(50); r < radius; r += s(60)) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.beginPath(); ctx.moveTo(centerX, s(20));       ctx.lineTo(centerX, cssSize - s(20)); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(s(20),   centerY);     ctx.lineTo(cssSize - s(20), centerY); ctx.stroke();
+
+            // フィールドマーカー
+            drawMarkers();
+
+            // ── ファイガ: ダメージ範囲 (プレイヤーより下)
+            if (mechState === 'damage') drawFigaDamageAreas();
+
+            // ── ファイガ: 玉 → ボス (ボスが玉の上に来る)
+            if (mechState === 'showing' || mechState === 'damage') drawOrb();
+            drawBoss();
+
+            // ── ファイガ: プレイヤーマーカー
+            drawFigaPlayerMarkers();
+
+            // プレイヤー
+            players.forEach(player => {
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, s(18), 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                ctx.fill();
+                ctx.strokeStyle = player.color;
+                ctx.lineWidth   = s(4);
+                ctx.stroke();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth   = s(1.5);
+                ctx.stroke();
+
+                const icon = roleIcons[player.role];
+                if (icon.complete && icon.naturalWidth) {
+                    ctx.drawImage(icon, player.x - s(12), player.y - s(12), s(24), s(24));
+                } else {
+                    ctx.fillStyle = player.color;
+                    ctx.beginPath();
+                    ctx.arc(player.x, player.y, s(10), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                const labelY = player.y + s(30);
+                ctx.font     = scaledFont(10, 'bold');
+                ctx.textAlign    = 'center';
+                ctx.textBaseline = 'middle';
+                const lw = ctx.measureText(player.id).width + s(10);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                ctx.fillRect(player.x - lw / 2, labelY - s(8), lw, s(16));
+                ctx.fillStyle = '#fff';
+                ctx.fillText(player.id, player.x, labelY);
+            });
+
+            // ── ファイガ: カウントダウン (最前面)
+            drawCountdown();
+        }
+
+        // ── ドラッグ操作 ──────────────────────────────────────────────────
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            const pos = getMousePos(e);
+            draggedMarker = null;
+            draggedPlayer = null;
+
+            if (debugMode) {
+                for (const m of markers) {
+                    if (Math.hypot(m.x - pos.x, m.y - pos.y) < s(18)) {
+                        draggedMarker = m;
+                        return;
+                    }
+                }
+            }
+
+            for (const player of players) {
+                if (Math.hypot(player.x - pos.x, player.y - pos.y) < s(18)) {
+                    draggedPlayer = player;
+                    break;
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', e => {
+            const pos = getMousePos(e);
+            if (draggedMarker) {
+                draggedMarker.x = pos.x;
+                draggedMarker.y = pos.y;
+                if (debugMode) updateDebugLog();
+                drawField();
+                return;
+            }
+            if (draggedPlayer) {
+                if (Math.hypot(pos.x - centerX, pos.y - centerY) < radius) {
+                    draggedPlayer.x = pos.x;
+                    draggedPlayer.y = pos.y;
+                }
+                if (debugMode) updateDebugLog();
+                drawField();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            draggedPlayer = null;
+            draggedMarker = null;
+        });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: t.clientX, clientY: t.clientY }));
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', e => {
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: t.clientX, clientY: t.clientY }));
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+            window.dispatchEvent(new MouseEvent('mouseup'));
+        });
+
+        // ── デバッグログ ──────────────────────────────────────────────────
+        function updateDebugLog() {
+            const sf = getScaleFactor();
+            const lines = ['const fieldMarkerData = ['];
+            markers.forEach(m => {
+                const bx = Math.round(m.x / sf);
+                const by = Math.round(m.y / sf);
+                lines.push(
+                    `    { x: ${String(bx).padStart(3)}, y: ${String(by).padStart(3)},` +
+                    ` label: '${m.label}', color: '${m.color}' },`
+                );
+            });
+            lines.push('];');
+            lines.push('');
+            lines.push('// プレイヤー位置 (ベース座標)');
+            players.forEach(p => {
+                const bx = Math.round(p.x / sf);
+                const by = Math.round(p.y / sf);
+                lines.push(`// ${p.id}: { x: ${String(bx).padStart(3)}, y: ${String(by).padStart(3)} }`);
+            });
+            document.getElementById('debug-log').value = lines.join('\n');
+        }
+
+        // ── コントロール ──────────────────────────────────────────────────
+        document.getElementById('btn-start').addEventListener('click', startMechanic);
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            resetMechanic();
+            players = clonePlayers(initialPlayerState, getScaleFactor());
+            initMarkers(getScaleFactor());
+            if (debugMode) updateDebugLog();
+            drawField();
+        });
+
+        document.getElementById('btn-debug').addEventListener('click', () => {
+            debugMode = !debugMode;
+            const btn   = document.getElementById('btn-debug');
+            const panel = document.getElementById('debug-panel');
+            btn.textContent = `DEBUG: ${debugMode ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('active', debugMode);
+            panel.classList.toggle('active', debugMode);
+            if (debugMode) updateDebugLog();
+            drawField();
+        });
+
+        document.getElementById('btn-copy-log').addEventListener('click', () => {
+            const ta = document.getElementById('debug-log');
+            ta.select();
+            document.execCommand('copy');
+            const btn = document.getElementById('btn-copy-log');
+            btn.textContent = 'コピーしました！';
+            setTimeout(() => { btn.textContent = 'コードをコピー'; }, 1500);
+        });
+
+        const fieldSizeSlider = document.getElementById('fieldSizeSlider');
+        const sizeLabel = document.getElementById('sizeLabel');
+        fieldSizeSlider.addEventListener('input', e => {
+            const newSize = Number(e.target.value);
+            sizeLabel.textContent = newSize;
+            updateCanvasSize(newSize);
+            if (debugMode) updateDebugLog();
+            drawField();
+        });
+
+        // ── 初期化 ────────────────────────────────────────────────────────
+        updateCanvasSize(cssSize);
+        initMarkers(getScaleFactor());
+        drawField();
+    </script>
+</body>
+</html>
