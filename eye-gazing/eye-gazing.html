@@ -158,8 +158,11 @@
         <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="600">
     </div>
 
-    <div id="canvas-container">
-        <canvas id="fieldCanvas" width="600" height="600"></canvas>
+    <div style="display:flex; align-items:flex-start; gap:16px;">
+        <div id="canvas-container">
+            <canvas id="fieldCanvas" width="600" height="600"></canvas>
+        </div>
+        <div id="statePanel" style="background:#262634; padding:12px; border-radius:8px; font-size:13px; line-height:1.7; min-width:200px;"></div>
     </div>
 
     <div id="debug-panel">
@@ -334,6 +337,7 @@
             stackTarget2     = null;
             countdown        = 0;
             document.getElementById('btn-start').disabled = false;
+            updateStatePanel();
         }
 
         // ── ファイガ 描画 ─────────────────────────────────────────────────
@@ -435,24 +439,24 @@
                 ctx.fill();
                 ctx.restore();
             } else {
-                // 赤玉: フィールド中央
+                // 赤玉: ボス上（青玉と同じ位置）
                 const bx = centerX;
-                const by = centerY;
-                const r  = s(20);
-                const grd = ctx.createRadialGradient(bx, by, 0, bx, by, r * 3);
-                grd.addColorStop(0,   'rgba(255, 210, 80, 0.9)');
-                grd.addColorStop(0.3, 'rgba(255, 80,  20, 0.55)');
-                grd.addColorStop(1,   'rgba(200, 0,   0,  0)');
+                const by = centerY - s(55);
+                const r  = s(16);
+                const grd = ctx.createRadialGradient(bx, by, 0, bx, by, r * 2.5);
+                grd.addColorStop(0,   'rgba(255, 160, 120, 0.9)');
+                grd.addColorStop(0.4, 'rgba(220, 50,  20,  0.5)');
+                grd.addColorStop(1,   'rgba(180, 0,   0,   0)');
                 ctx.beginPath();
-                ctx.arc(bx, by, r * 3, 0, Math.PI * 2);
+                ctx.arc(bx, by, r * 2.5, 0, Math.PI * 2);
                 ctx.fillStyle = grd;
                 ctx.fill();
                 ctx.save();
-                ctx.shadowColor = '#ff6633';
-                ctx.shadowBlur  = s(20);
+                ctx.shadowColor = '#ff4422';
+                ctx.shadowBlur  = s(14);
                 ctx.beginPath();
                 ctx.arc(bx, by, r, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(255, 110, 50, 0.9)';
+                ctx.fillStyle = 'rgba(220, 80, 50, 0.92)';
                 ctx.fill();
                 ctx.restore();
             }
@@ -516,7 +520,7 @@
         }
 
         function drawFigaPlayerMarkers() {
-            if (mechState === 'idle') return;
+            if (mechState !== 'showing') return; // damage フェーズではマーカー非表示
             players.forEach(player => {
                 if (mechPattern === 'scatter') {
                     drawSpreadMarker(player.x, player.y);
@@ -541,6 +545,56 @@
             ctx.textBaseline = 'middle';
             ctx.fillText(countdown, centerX, s(31));
             ctx.restore();
+        }
+
+        // ── 状態パネル更新 ────────────────────────────────────────────────
+        function updateStatePanel() {
+            const panel = document.getElementById('statePanel');
+
+            if (mechState === 'idle') {
+                panel.innerHTML = '<span style="color:#555">— 待機中 —</span>';
+                return;
+            }
+
+            const orbLabel = orbColor === 'blue'
+                ? '<span style="color:#88ccff">🔵 青玉</span>'
+                : '<span style="color:#ff7744">🔴 赤玉</span>';
+
+            const patternLabel = (p) =>
+                p === 'scatter'
+                    ? '<span style="color:#ffaa44">散会</span>'
+                    : '<span style="color:#6699ff">頭割り</span>';
+
+            const inverted = orbColor === 'red';
+            const invertBadge = inverted
+                ? ' <span style="color:#ff4444;font-size:11px">[反転]</span>'
+                : '';
+
+            let t1Label = stackTarget1 ? stackTarget1.id : '?';
+            let t2Label = stackTarget2 ? stackTarget2.id : '?';
+
+            let stackInfo = '';
+            if (mechPattern === 'stack' || effectivePattern === 'stack') {
+                stackInfo = `
+                    <div style="margin-top:4px;font-size:12px;color:#aaa;">
+                        TH側: <span style="color:#fff">${t1Label}</span>
+                        &nbsp;/&nbsp;
+                        DPS側: <span style="color:#fff">${t2Label}</span>
+                    </div>`;
+            }
+
+            const phaseLabel = mechState === 'showing'
+                ? `<span style="color:#ffd700">▶ 詠唱中 (${countdown})</span>`
+                : `<span style="color:#ff4444">💥 発動</span>`;
+
+            panel.innerHTML = `
+                <div style="font-weight:bold;margin-bottom:6px;color:#ccc">ファイガ</div>
+                <div>${phaseLabel}</div>
+                <div style="margin-top:6px">玉: ${orbLabel}</div>
+                <div style="margin-top:4px">マーカー: ${patternLabel(mechPattern)}</div>
+                <div style="margin-top:4px">実際の発動: ${patternLabel(effectivePattern)}${invertBadge}</div>
+                ${stackInfo}
+            `;
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -651,6 +705,8 @@
 
             // ── ファイガ: カウントダウン (最前面)
             drawCountdown();
+
+            updateStatePanel();
         }
 
         // ── ドラッグ操作 ──────────────────────────────────────────────────
