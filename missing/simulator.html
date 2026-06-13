@@ -178,6 +178,90 @@
             transition: 0.2s;
         }
         #btn-retry:hover { background: #4a1a1a; border-color: #ff8888; }
+
+        /* START overlay */
+        @keyframes startAnim {
+            0%   { opacity: 0; letter-spacing: 24px; }
+            15%  { opacity: 1; letter-spacing: 12px; }
+            65%  { opacity: 1; letter-spacing: 12px; }
+            100% { opacity: 0; letter-spacing: 20px; }
+        }
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55);
+            z-index: 40;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        #start-overlay.visible { display: flex; }
+        #start-text {
+            font-size: 68px;
+            font-weight: bold;
+            color: #fff;
+            font-family: serif;
+            animation: startAnim 1.6s ease-out forwards;
+            text-shadow: 0 0 16px #ffd700, 0 0 40px #ffd700, 0 0 80px rgba(255,215,0,0.4);
+        }
+
+        /* Duty Complete / Score overlay */
+        @keyframes completionIn {
+            0%   { opacity: 0; transform: translateY(-16px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        #completion-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(8,4,28,0.88);
+            z-index: 30;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        #completion-overlay.visible {
+            display: flex;
+            animation: completionIn 0.8s ease-out forwards;
+        }
+        .completion-deco-line {
+            width: 70%;
+            height: 1px;
+            background: linear-gradient(to right, transparent, #c8a840, #ffd700, #c8a840, transparent);
+            margin: 6px 0;
+        }
+        #completion-title {
+            font-size: 38px;
+            font-weight: bold;
+            color: #ffd700;
+            letter-spacing: 6px;
+            text-shadow: 0 0 16px #ffd700, 0 0 32px rgba(255,215,0,0.5);
+            font-family: serif;
+            text-align: center;
+        }
+        #completion-score {
+            font-size: 22px;
+            color: #ccc;
+            letter-spacing: 2px;
+            min-height: 1em;
+        }
+        #btn-completion-retry {
+            margin-top: 20px;
+            padding: 11px 36px;
+            font-size: 17px;
+            font-weight: bold;
+            background: #12103a;
+            color: #fff;
+            border: 2px solid #7799ee;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        #btn-completion-retry:hover { background: #1e1c55; border-color: #aabbff; }
         @keyframes towerPop {
             0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
             20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
@@ -351,6 +435,16 @@
             <div id="ultimate-failed-overlay">
                 <div id="ultimate-failed-text">全滅した</div>
                 <button id="btn-retry">再挑戦</button>
+            </div>
+            <div id="start-overlay">
+                <div id="start-text">START</div>
+            </div>
+            <div id="completion-overlay">
+                <div class="completion-deco-line"></div>
+                <div id="completion-title"></div>
+                <div id="completion-score"></div>
+                <div class="completion-deco-line"></div>
+                <button id="btn-completion-retry">再挑戦</button>
             </div>
         </div>
         <div id="statePanel" style="background: #262634; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; min-width: 220px;"></div>
@@ -1371,8 +1465,8 @@
                 if (guidanceNextHit !== null) {
                     setTowerHit(guidanceNextHit);
                 } else {
-                    // ヒット8後の最終誘導完了
-                    drawField();
+                    // ヒット8後の最終誘導完了 → 全行程終了
+                    showCompletionOverlay();
                 }
             }, 1400);
         }
@@ -1496,6 +1590,7 @@
         function setPracticeJob(id) {
             if (practiceJob === id) { exitPracticeMode(); return; }
             hideUltimateFailed();
+            hideCompletionOverlay();
             practiceMode     = true;
             practiceJob      = id;
             practiceSelected = null;
@@ -1515,6 +1610,7 @@
         function exitPracticeMode() {
             stopPracticeTimer();
             hideUltimateFailed();
+            hideCompletionOverlay();
             practiceMode     = false;
             practiceJob      = null;
             practiceSelected = null;
@@ -1605,6 +1701,35 @@
             overlay.classList.remove('visible');
         }
 
+        function showStartOverlay(callback) {
+            if (!practiceMode) { if (callback) callback(); return; }
+            const overlay = document.getElementById('start-overlay');
+            overlay.classList.add('visible');
+            setTimeout(() => {
+                overlay.classList.remove('visible');
+                if (callback) callback();
+            }, 1600);
+        }
+
+        function showCompletionOverlay() {
+            stopPracticeTimer();
+            drawField();
+            const towerCorrect = Object.values(practiceScores).filter(v => v === 'correct').length;
+            const guidCorrect  = Object.values(guidanceScores).filter(v => v === 'correct').length;
+            const towerTotal   = Object.keys(practiceScores).length;
+            const guidTotal    = Object.keys(guidanceScores).length;
+            const correct = towerCorrect + guidCorrect;
+            const total   = towerTotal   + guidTotal;
+            const allCorrect = total === 0 || correct === total;
+            document.getElementById('completion-title').textContent = allCorrect ? 'DUTY COMPLETE' : `${correct} / ${total} 成功`;
+            document.getElementById('completion-score').textContent = '';
+            document.getElementById('completion-overlay').classList.add('visible');
+        }
+
+        function hideCompletionOverlay() {
+            document.getElementById('completion-overlay').classList.remove('visible');
+        }
+
         // プレイヤーを targetX/Y へ duration ms かけてスライド移動し、完了後 onComplete を呼ぶ
         function slidePlayerTo(player, targetX, targetY, duration, onComplete) {
             const startX = player.x;
@@ -1634,6 +1759,9 @@
                 enterGuidancePhase(nextHit);
             } else if (currentTowerHit < 8) {
                 setTowerHit(currentTowerHit + 1);
+            } else {
+                // hit 8 正解 & 誘導なし → 完了
+                showCompletionOverlay();
             }
         }
 
@@ -2110,6 +2238,7 @@
 
         function generateDebuff() {
             hideUltimateFailed();
+            hideCompletionOverlay();
             const maxRetry = 20;
             for (let attempt = 0; attempt < maxRetry; attempt++) {
                 players = clonePlayers(initialPlayerState, getScaleFactor());
@@ -2143,8 +2272,8 @@
                 guidanceSelected = null;
                 guidanceScores   = {};
             }
-            setTowerHit(1);
             updateLog('デバフを生成しました（1回目の塔から開始）。');
+            showStartOverlay(() => setTowerHit(1));
         }
 
         function getHorizontalAssignment(playersList) {
@@ -2454,6 +2583,11 @@
 
         document.getElementById('btn-retry').addEventListener('click', () => {
             hideUltimateFailed();
+            generateDebuff();
+        });
+
+        document.getElementById('btn-completion-retry').addEventListener('click', () => {
+            hideCompletionOverlay();
             generateDebuff();
         });
 
