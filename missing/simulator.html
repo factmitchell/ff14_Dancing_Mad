@@ -580,6 +580,16 @@
             return towerHitGroups[Math.min(Math.max(0, hit - 1), 7)] || null;
         }
 
+        // グループのデバフが現在の状態で表示すべきか判定
+        // 後組: ヒット7完了後（ヒット8以降）はデバフ消滅
+        // 先組: ヒット8完了後の最終誘導中（guidanceNextHit===null）はデバフ消滅
+        function isGroupDebuffVisible(group) {
+            if (!group) return true;
+            if (group === '後組' && currentTowerHit >= 8) return false;
+            if (group === '先組' && guidancePhase && guidanceNextHit === null) return false;
+            return true;
+        }
+
         function getGroupHitOrdinal(group, hit) {
             let count = 0;
             for (let i = 1; i <= hit; i++) {
@@ -942,7 +952,7 @@
                                     practiceDifficulty === 'easy' ||
                                     hardIconVisible ||
                                     practiceChecked);
-                if (showEmoji) {
+                if (showEmoji && isGroupDebuffVisible(player.debuff.group)) {
                     const emoji = getMechanicEmoji(player.debuff.mechanic || player.type);
                     if (emoji) {
                         ctx.fillStyle = '#fff';
@@ -2114,7 +2124,8 @@
                     if (!player) return;
                     const color = getPairColor(player.id);
                     const isActivePlayer = player.debuff.group === activeGroup && currentTowerHit > 0;
-                    const displayMec = isActivePlayer ? player.debuff.mechanic : player.initialMechanic;
+                    const displayMec = !isGroupDebuffVisible(player.debuff.group) ? ''
+                        : (isActivePlayer ? player.debuff.mechanic : player.initialMechanic);
                     const emoji = getMechanicEmoji(displayMec);
                     const mecColor = displayMec === '頭割り' ? '#ff6b6b' : displayMec === '扇AoE' ? '#ffd700' : displayMec === '円AoE' ? '#64b5f6' : '#aaa';
                     const groupColor = player.debuff.group === '先組' ? '#00e5ff' : '#ff8a65';
