@@ -51,6 +51,7 @@
             margin-bottom: 15px;
             display: flex;
             gap: 10px;
+            align-items: center;
             background: #2a2a35;
             padding: 10px;
             border-radius: 8px;
@@ -68,6 +69,66 @@
         button:hover {
             background: #55556c;
         }
+        #btn-debug {
+            background: #2a2a2a;
+            color: #666;
+            border: 1px solid #444;
+            font-size: 11px;
+            padding: 4px 10px;
+            margin-left: 8px;
+        }
+        #btn-debug.active {
+            background: #3a2a00;
+            color: #ffd700;
+            border-color: #ffd700;
+        }
+        #debug-panel {
+            display: none;
+            margin-top: 12px;
+            max-width: 750px;
+            width: 100%;
+            background: #1a1a0d;
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #ccc;
+            box-sizing: border-box;
+        }
+        #debug-panel.active {
+            display: block;
+        }
+        .debug-hint {
+            margin-bottom: 8px;
+            color: #ffd700;
+            font-weight: bold;
+        }
+        #debug-log {
+            width: 100%;
+            height: 230px;
+            background: #0d0d0a;
+            color: #7ec8e3;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        #btn-copy-log {
+            margin-top: 6px;
+            padding: 6px 14px;
+            font-size: 13px;
+            background: #335;
+            color: #7ec8e3;
+            border: 1px solid #7ec8e3;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        #btn-copy-log:hover {
+            background: #446;
+        }
     </style>
 </head>
 <body>
@@ -76,6 +137,7 @@
 
     <div id="controls">
         <button id="btn-reset">リセット</button>
+        <button id="btn-debug">DEBUG: OFF</button>
     </div>
 
     <div id="sizeControl">
@@ -85,6 +147,12 @@
 
     <div id="canvas-container">
         <canvas id="fieldCanvas" width="600" height="600"></canvas>
+    </div>
+
+    <div id="debug-panel">
+        <div class="debug-hint">🔧 フィールドマーカーをドラッグして位置を調整できます（プレイヤーも移動可）</div>
+        <textarea id="debug-log" readonly></textarea>
+        <button id="btn-copy-log">コードをコピー</button>
     </div>
 
     <script>
@@ -108,23 +176,23 @@
             return `${weight ? weight + ' ' : ''}${size}px Arial`;
         }
 
-        function updateCanvasSize(size) {
-            const scale = size / cssSize;
-            if (cssSize !== size) {
-                players.forEach(player => {
-                    player.x *= scale;
-                    player.y *= scale;
-                });
-            }
-            cssSize = size;
-            canvas.style.width = `${cssSize}px`;
-            canvas.style.height = `${cssSize}px`;
-            canvas.width = cssSize * dpr;
-            canvas.height = cssSize * dpr;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            centerX = cssSize / 2;
-            centerY = cssSize / 2;
-            radius = cssSize / 2 - s(20);
+        // ── フィールドマーカー定義 (ベース600座標) ───────────────────────────
+        // 配置: A=北, B=東, C=南, D=西 / 1=北西, 2=北東, 3=南東, 4=南西
+        const fieldMarkerData = [
+            { x: 300, y:  78, label: 'A', color: '#ff6090' },
+            { x: 385, y: 212, label: '2', color: '#ffd700' },
+            { x: 511, y: 300, label: 'B', color: '#ffa040' },
+            { x: 385, y: 388, label: '3', color: '#40c8ff' },
+            { x: 300, y: 522, label: 'C', color: '#40c8ff' },
+            { x: 215, y: 388, label: '4', color: '#c080ff' },
+            { x:  89, y: 300, label: 'D', color: '#c080ff' },
+            { x: 215, y: 212, label: '1', color: '#d0d0d0' },
+        ];
+
+        let markers = [];
+
+        function initMarkers(scale) {
+            markers = fieldMarkerData.map(m => ({ ...m, x: m.x * scale, y: m.y * scale }));
         }
 
         // ── プレイヤー定義 ────────────────────────────────────────────────
@@ -160,6 +228,23 @@
 
         let players = clonePlayers(initialPlayerState, getScaleFactor());
 
+        function updateCanvasSize(size) {
+            const scale = size / cssSize;
+            if (cssSize !== size) {
+                players.forEach(player => { player.x *= scale; player.y *= scale; });
+                markers.forEach(m => { m.x *= scale; m.y *= scale; });
+            }
+            cssSize = size;
+            canvas.style.width = `${cssSize}px`;
+            canvas.style.height = `${cssSize}px`;
+            canvas.width = cssSize * dpr;
+            canvas.height = cssSize * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            centerX = cssSize / 2;
+            centerY = cssSize / 2;
+            radius = cssSize / 2 - s(20);
+        }
+
         // ── ロールアイコン ────────────────────────────────────────────────
         const roleIcons = {
             TANK:   new Image(),
@@ -178,7 +263,46 @@
         roleIcons.HEALER.src = 'FFXIVIcons JobIcons/00_ROLE/HealerRole.png';
         roleIcons.DPS.src    = 'FFXIVIcons JobIcons/00_ROLE/DPSRole.png';
 
+        // ── デバッグモード ────────────────────────────────────────────────
+        let debugMode = false;
+        let draggedMarker = null;
+
         // ── 描画 ──────────────────────────────────────────────────────────
+        function drawMarkers() {
+            const mHalf = s(13);
+            markers.forEach(m => {
+                // グロー + 背景 + ボーダー
+                ctx.save();
+                ctx.shadowColor = m.color;
+                ctx.shadowBlur = s(8);
+                ctx.fillStyle = 'rgba(5, 5, 12, 0.88)';
+                ctx.fillRect(m.x - mHalf, m.y - mHalf, mHalf * 2, mHalf * 2);
+                ctx.strokeStyle = m.color;
+                ctx.lineWidth = s(1.5);
+                ctx.strokeRect(m.x - mHalf, m.y - mHalf, mHalf * 2, mHalf * 2);
+                ctx.restore();
+
+                // デバッグ時: 破線アウトライン
+                if (debugMode) {
+                    ctx.save();
+                    ctx.strokeStyle = '#ffd700';
+                    ctx.lineWidth = s(1.5);
+                    ctx.setLineDash([s(3), s(3)]);
+                    const pad = s(4);
+                    ctx.strokeRect(m.x - mHalf - pad, m.y - mHalf - pad, (mHalf + pad) * 2, (mHalf + pad) * 2);
+                    ctx.setLineDash([]);
+                    ctx.restore();
+                }
+
+                // ラベル文字
+                ctx.fillStyle = m.color;
+                ctx.font = scaledFont(11, 'bold');
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(m.label, m.x, m.y);
+            });
+        }
+
         function drawField() {
             ctx.clearRect(0, 0, cssSize, cssSize);
 
@@ -202,19 +326,11 @@
             ctx.beginPath(); ctx.moveTo(centerX, s(20)); ctx.lineTo(centerX, cssSize - s(20)); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(s(20), centerY); ctx.lineTo(cssSize - s(20), centerY); ctx.stroke();
 
-            // 方角ラベル
-            ctx.fillStyle = '#aaa';
-            ctx.font = scaledFont(16);
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('A', centerX,          s(35));
-            ctx.fillText('B', cssSize - s(35),  centerY);
-            ctx.fillText('C', centerX,          cssSize - s(35));
-            ctx.fillText('D', s(35),            centerY);
+            // フィールドマーカー (プレイヤーより下)
+            drawMarkers();
 
             // プレイヤー描画
             players.forEach(player => {
-                // 外縁円
                 ctx.beginPath();
                 ctx.arc(player.x, player.y, s(18), 0, Math.PI * 2);
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
@@ -226,7 +342,6 @@
                 ctx.lineWidth = s(1.5);
                 ctx.stroke();
 
-                // ロールアイコン or カラーサークル
                 const icon = roleIcons[player.role];
                 const iconSize = s(24);
                 const iconOffset = s(12);
@@ -239,7 +354,6 @@
                     ctx.fill();
                 }
 
-                // ラベル
                 const labelY = player.y + s(30);
                 ctx.font = scaledFont(10, 'bold');
                 ctx.textAlign = 'center';
@@ -262,7 +376,19 @@
 
         canvas.addEventListener('mousedown', e => {
             const pos = getMousePos(e);
+            draggedMarker = null;
             draggedPlayer = null;
+
+            // デバッグモード時: マーカーを優先チェック
+            if (debugMode) {
+                for (const m of markers) {
+                    if (Math.hypot(m.x - pos.x, m.y - pos.y) < s(18)) {
+                        draggedMarker = m;
+                        return;
+                    }
+                }
+            }
+
             players.forEach(player => {
                 if (Math.hypot(player.x - pos.x, player.y - pos.y) < s(18)) {
                     draggedPlayer = player;
@@ -271,16 +397,28 @@
         });
 
         canvas.addEventListener('mousemove', e => {
-            if (!draggedPlayer) return;
             const pos = getMousePos(e);
-            if (Math.hypot(pos.x - centerX, pos.y - centerY) < radius) {
-                draggedPlayer.x = pos.x;
-                draggedPlayer.y = pos.y;
+            if (draggedMarker) {
+                draggedMarker.x = pos.x;
+                draggedMarker.y = pos.y;
+                if (debugMode) updateDebugLog();
+                drawField();
+                return;
             }
-            drawField();
+            if (draggedPlayer) {
+                if (Math.hypot(pos.x - centerX, pos.y - centerY) < radius) {
+                    draggedPlayer.x = pos.x;
+                    draggedPlayer.y = pos.y;
+                }
+                if (debugMode) updateDebugLog();
+                drawField();
+            }
         });
 
-        window.addEventListener('mouseup', () => { draggedPlayer = null; });
+        window.addEventListener('mouseup', () => {
+            draggedPlayer = null;
+            draggedMarker = null;
+        });
 
         // タッチ対応
         canvas.addEventListener('touchstart', e => {
@@ -301,10 +439,60 @@
             window.dispatchEvent(new MouseEvent('mouseup'));
         });
 
+        // ── デバッグログ ──────────────────────────────────────────────────
+        function updateDebugLog() {
+            const sf = getScaleFactor();
+
+            // フィールドマーカー座標
+            const lines = ['const fieldMarkerData = ['];
+            markers.forEach(m => {
+                const bx = Math.round(m.x / sf);
+                const by = Math.round(m.y / sf);
+                lines.push(
+                    `    { x: ${String(bx).padStart(3)}, y: ${String(by).padStart(3)},` +
+                    ` label: '${m.label}', color: '${m.color}' },`
+                );
+            });
+            lines.push('];');
+
+            // プレイヤー位置
+            lines.push('');
+            lines.push('// プレイヤー位置 (ベース座標)');
+            players.forEach(p => {
+                const bx = Math.round(p.x / sf);
+                const by = Math.round(p.y / sf);
+                lines.push(`// ${p.id}: { x: ${String(bx).padStart(3)}, y: ${String(by).padStart(3)} }`);
+            });
+
+            document.getElementById('debug-log').value = lines.join('\n');
+        }
+
         // ── コントロール ──────────────────────────────────────────────────
         document.getElementById('btn-reset').addEventListener('click', () => {
             players = clonePlayers(initialPlayerState, getScaleFactor());
+            initMarkers(getScaleFactor());
+            if (debugMode) updateDebugLog();
             drawField();
+        });
+
+        document.getElementById('btn-debug').addEventListener('click', () => {
+            debugMode = !debugMode;
+            const btn = document.getElementById('btn-debug');
+            const panel = document.getElementById('debug-panel');
+            btn.textContent = `DEBUG: ${debugMode ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('active', debugMode);
+            panel.classList.toggle('active', debugMode);
+            if (debugMode) updateDebugLog();
+            drawField();
+        });
+
+        document.getElementById('btn-copy-log').addEventListener('click', () => {
+            const ta = document.getElementById('debug-log');
+            ta.select();
+            document.execCommand('copy');
+            const btn = document.getElementById('btn-copy-log');
+            btn.textContent = 'コピーしました！';
+            setTimeout(() => { btn.textContent = 'コードをコピー'; }, 1500);
         });
 
         const fieldSizeSlider = document.getElementById('fieldSizeSlider');
@@ -313,11 +501,13 @@
             const newSize = Number(e.target.value);
             sizeLabel.textContent = newSize;
             updateCanvasSize(newSize);
+            if (debugMode) updateDebugLog();
             drawField();
         });
 
         // ── 初期化 ────────────────────────────────────────────────────────
         updateCanvasSize(cssSize);
+        initMarkers(getScaleFactor());
         drawField();
     </script>
 </body>
