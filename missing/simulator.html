@@ -861,8 +861,8 @@
 
             drawGimmickGuides();
             drawGuidanceAoEOverlay();
-            // hard mode: hide AoE effects until answer checked
-            if (!practiceMode || practiceDifficulty === 'easy' || practiceChecked) {
+            // hard mode: hide AoE effects until answer checked / slide中も非表示
+            if ((!practiceMode || practiceDifficulty === 'easy' || practiceChecked) && !slideInProgress) {
                 drawTowerEffects(getTowerEffects());
             }
             // drawEffects は 'init' 時に [] を返すため実質 no-op。
@@ -1451,6 +1451,40 @@
             return true;
         }
 
+        let slideInProgress = false;
+
+        // プレイヤーを targetX/Y へ duration ms かけてスライド移動し、完了後 onComplete を呼ぶ
+        function slidePlayerTo(player, targetX, targetY, duration, onComplete) {
+            const startX = player.x;
+            const startY = player.y;
+            const startTime = performance.now();
+            slideInProgress = true;
+            function animate(now) {
+                const t = Math.min((now - startTime) / duration, 1);
+                const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+                player.x = startX + (targetX - startX) * ease;
+                player.y = startY + (targetY - startY) * ease;
+                drawField();
+                if (t < 1) { requestAnimationFrame(animate); }
+                else {
+                    player.x = targetX; player.y = targetY;
+                    slideInProgress = false;
+                    drawField();
+                    if (onComplete) onComplete();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function proceedToNextHit() {
+            if (guidanceEnabled && currentTowerHit % 2 === 0) {
+                const nextHit = currentTowerHit < 8 ? currentTowerHit + 1 : null;
+                enterGuidancePhase(nextHit);
+            } else if (currentTowerHit < 8) {
+                setTowerHit(currentTowerHit + 1);
+            }
+        }
+
         function showPracticeFeedback(correct) {
             const el = document.getElementById('practice-feedback');
             if (practiceFeedbackTimer) clearTimeout(practiceFeedbackTimer);
@@ -1462,16 +1496,31 @@
             el.style.animation = 'feedbackPop 1.2s ease-out forwards';
             practiceFeedbackTimer = setTimeout(() => {
                 el.style.display = 'none';
-                if (practiceMode) {
-                    if (guidanceEnabled && currentTowerHit % 2 === 0) {
-                        // 偶数塔 (2,4,6,8) の後はすべて誘導フェーズ
-                        // hit8 の後は nextHit = null (終了)
-                        const nextHit = currentTowerHit < 8 ? currentTowerHit + 1 : null;
-                        enterGuidancePhase(nextHit);
-                    } else if (currentTowerHit < 8) {
-                        setTowerHit(currentTowerHit + 1);
+                if (!practiceMode) return;
+                if (!correct) {
+                    // 不正解: 他プレイヤーを正解位置へ即移動、練習プレイヤーはスライド
+                    const practicePlayer = players.find(p => p.id === practiceJob);
+                    if (practicePlayer) {
+                        const wrongX = practicePlayer.x;
+                        const wrongY = practicePlayer.y;
+                        alignAllPlayers(); // 他プレイヤーを正解位置へ
+                        // 練習プレイヤーを誤位置に戻してスライド開始
+                        const sf = getScaleFactor();
+                        const parity = currentTowerHit % 2 === 1 ? 'odd' : 'even';
+                        const posMap = savedDebuffPositions[parity] || defaultDebuffPositions[parity];
+                        const pos = posMap && posMap[getPlayerDebuffKey(practicePlayer)];
+                        if (pos) {
+                            practicePlayer.x = wrongX;
+                            practicePlayer.y = wrongY;
+                            slidePlayerTo(practicePlayer, pos.x * sf, pos.y * sf, 900, () => {
+                                if (practiceMode) proceedToNextHit();
+                            });
+                            return;
+                        }
                     }
+                    alignAllPlayers();
                 }
+                proceedToNextHit();
             }, 1400);
         }
 
