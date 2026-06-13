@@ -297,14 +297,11 @@
                 ? (mechPattern === 'scatter' ? 'stack' : 'scatter')
                 : mechPattern;
 
-            stackTarget1 = null;
-            stackTarget2 = null;
-            if (mechPattern === 'stack') {
-                const th  = players.filter(p => ['MT', 'ST', 'H1', 'H2'].includes(p.id));
-                const dps = players.filter(p => ['D1', 'D2', 'D3', 'D4'].includes(p.id));
-                stackTarget1 = th[Math.floor(Math.random() * th.length)];
-                stackTarget2 = dps[Math.floor(Math.random() * dps.length)];
-            }
+            // 赤玉で散会→頭割りに反転する場合もあるため、常に抽選しておく
+            const th  = players.filter(p => ['MT', 'ST', 'H1', 'H2'].includes(p.id));
+            const dps = players.filter(p => ['D1', 'D2', 'D3', 'D4'].includes(p.id));
+            stackTarget1 = th[Math.floor(Math.random() * th.length)];
+            stackTarget2 = dps[Math.floor(Math.random() * dps.length)];
 
             mechState = 'showing';
             countdown = 5;
