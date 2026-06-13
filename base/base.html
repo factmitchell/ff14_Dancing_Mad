@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FF14 ギミックシミュレーター</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1e1e24;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #ff4a4a;
+        }
+        #sizeControl {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #222;
+            padding: 8px 10px;
+            border-radius: 8px;
+            color: #fff;
+        }
+        #sizeControl label {
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        #sizeControl input[type="range"] {
+            width: 180px;
+        }
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 50%;
+            overflow: hidden;
+            background: #111;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            background: #2a2a35;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        button {
+            background: #444454;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #55556c;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>FF14 ギミックシミュレーター</h1>
+
+    <div id="controls">
+        <button id="btn-reset">リセット</button>
+    </div>
+
+    <div id="sizeControl">
+        <label for="fieldSizeSlider">フィールドサイズ: <span id="sizeLabel">600</span> px</label>
+        <input id="fieldSizeSlider" type="range" min="400" max="900" step="50" value="600">
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="fieldCanvas" width="600" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fieldCanvas');
+        const ctx = canvas.getContext('2d');
+        const BASE_CANVAS_SIZE = 600;
+        let cssSize = 600;
+        const dpr = window.devicePixelRatio || 1;
+        let centerX, centerY, radius;
+
+        function getScaleFactor() {
+            return cssSize / BASE_CANVAS_SIZE;
+        }
+
+        function s(value) {
+            return value * getScaleFactor();
+        }
+
+        function scaledFont(px, weight = '') {
+            const size = Math.max(8, Math.round(s(px)));
+            return `${weight ? weight + ' ' : ''}${size}px Arial`;
+        }
+
+        function updateCanvasSize(size) {
+            const scale = size / cssSize;
+            if (cssSize !== size) {
+                players.forEach(player => {
+                    player.x *= scale;
+                    player.y *= scale;
+                });
+            }
+            cssSize = size;
+            canvas.style.width = `${cssSize}px`;
+            canvas.style.height = `${cssSize}px`;
+            canvas.width = cssSize * dpr;
+            canvas.height = cssSize * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            centerX = cssSize / 2;
+            centerY = cssSize / 2;
+            radius = cssSize / 2 - s(20);
+        }
+
+        // ── プレイヤー定義 ────────────────────────────────────────────────
+        const roleColors = {
+            TANK:   '#4169e1',
+            HEALER: '#32cd32',
+            DPS:    '#dc143c',
+        };
+
+        function createPlayer(id, role, x, y) {
+            return { id, role, x, y, color: roleColors[role] };
+        }
+
+        const initialPlayerState = [
+            createPlayer('MT', 'TANK',   170, 470),
+            createPlayer('ST', 'TANK',   200, 470),
+            createPlayer('H1', 'HEALER', 250, 470),
+            createPlayer('H2', 'HEALER', 280, 470),
+            createPlayer('D1', 'DPS',    330, 470),
+            createPlayer('D2', 'DPS',    360, 470),
+            createPlayer('D3', 'DPS',    410, 470),
+            createPlayer('D4', 'DPS',    440, 470),
+        ];
+
+        function clonePlayers(source, scale = 1) {
+            return source.map(p => {
+                const clone = JSON.parse(JSON.stringify(p));
+                clone.x *= scale;
+                clone.y *= scale;
+                return clone;
+            });
+        }
+
+        let players = clonePlayers(initialPlayerState, getScaleFactor());
+
+        // ── ロールアイコン ────────────────────────────────────────────────
+        const roleIcons = {
+            TANK:   new Image(),
+            HEALER: new Image(),
+            DPS:    new Image(),
+        };
+        let loadedIcons = 0;
+        const onIconLoad = () => {
+            loadedIcons++;
+            if (loadedIcons === 3) drawField();
+        };
+        roleIcons.TANK.onload   = onIconLoad;
+        roleIcons.HEALER.onload = onIconLoad;
+        roleIcons.DPS.onload    = onIconLoad;
+        roleIcons.TANK.src   = 'FFXIVIcons JobIcons/00_ROLE/TankRole.png';
+        roleIcons.HEALER.src = 'FFXIVIcons JobIcons/00_ROLE/HealerRole.png';
+        roleIcons.DPS.src    = 'FFXIVIcons JobIcons/00_ROLE/DPSRole.png';
+
+        // ── 描画 ──────────────────────────────────────────────────────────
+        function drawField() {
+            ctx.clearRect(0, 0, cssSize, cssSize);
+
+            // フィールド背景
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#222';
+            ctx.fill();
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = s(3);
+            ctx.stroke();
+
+            // グリッド線
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = s(1);
+            for (let r = s(50); r < radius; r += s(60)) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.beginPath(); ctx.moveTo(centerX, s(20)); ctx.lineTo(centerX, cssSize - s(20)); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(s(20), centerY); ctx.lineTo(cssSize - s(20), centerY); ctx.stroke();
+
+            // 方角ラベル
+            ctx.fillStyle = '#aaa';
+            ctx.font = scaledFont(16);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('A', centerX,          s(35));
+            ctx.fillText('B', cssSize - s(35),  centerY);
+            ctx.fillText('C', centerX,          cssSize - s(35));
+            ctx.fillText('D', s(35),            centerY);
+
+            // プレイヤー描画
+            players.forEach(player => {
+                // 外縁円
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, s(18), 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                ctx.fill();
+                ctx.strokeStyle = player.color;
+                ctx.lineWidth = s(4);
+                ctx.stroke();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = s(1.5);
+                ctx.stroke();
+
+                // ロールアイコン or カラーサークル
+                const icon = roleIcons[player.role];
+                const iconSize = s(24);
+                const iconOffset = s(12);
+                if (icon.complete && icon.naturalWidth) {
+                    ctx.drawImage(icon, player.x - iconOffset, player.y - iconOffset, iconSize, iconSize);
+                } else {
+                    ctx.fillStyle = player.color;
+                    ctx.beginPath();
+                    ctx.arc(player.x, player.y, s(10), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // ラベル
+                const labelY = player.y + s(30);
+                ctx.font = scaledFont(10, 'bold');
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const labelWidth = ctx.measureText(player.id).width + s(10);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                ctx.fillRect(player.x - labelWidth / 2, labelY - s(8), labelWidth, s(16));
+                ctx.fillStyle = '#fff';
+                ctx.fillText(player.id, player.x, labelY);
+            });
+        }
+
+        // ── ドラッグ操作 ──────────────────────────────────────────────────
+        let draggedPlayer = null;
+
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            const pos = getMousePos(e);
+            draggedPlayer = null;
+            players.forEach(player => {
+                if (Math.hypot(player.x - pos.x, player.y - pos.y) < s(18)) {
+                    draggedPlayer = player;
+                }
+            });
+        });
+
+        canvas.addEventListener('mousemove', e => {
+            if (!draggedPlayer) return;
+            const pos = getMousePos(e);
+            if (Math.hypot(pos.x - centerX, pos.y - centerY) < radius) {
+                draggedPlayer.x = pos.x;
+                draggedPlayer.y = pos.y;
+            }
+            drawField();
+        });
+
+        window.addEventListener('mouseup', () => { draggedPlayer = null; });
+
+        // タッチ対応
+        canvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: t.clientX, clientY: t.clientY }));
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', e => {
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: t.clientX, clientY: t.clientY }));
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+            window.dispatchEvent(new MouseEvent('mouseup'));
+        });
+
+        // ── コントロール ──────────────────────────────────────────────────
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            players = clonePlayers(initialPlayerState, getScaleFactor());
+            drawField();
+        });
+
+        const fieldSizeSlider = document.getElementById('fieldSizeSlider');
+        const sizeLabel = document.getElementById('sizeLabel');
+        fieldSizeSlider.addEventListener('input', e => {
+            const newSize = Number(e.target.value);
+            sizeLabel.textContent = newSize;
+            updateCanvasSize(newSize);
+            drawField();
+        });
+
+        // ── 初期化 ────────────────────────────────────────────────────────
+        updateCanvasSize(cssSize);
+        drawField();
+    </script>
+</body>
+</html>
