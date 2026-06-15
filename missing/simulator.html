@@ -628,14 +628,21 @@
                 }
                 // 奇数ヒット
                 const oddMec = player.debuff.mechanic || 'none';
+                // 位置キーは頭割り以外を正規化: TH→扇AoE, DPS→円AoE
+                // (円/扇どちらでも物理的な塔位置は同じため、保存位置が両パターンに共通適用される)
+                const normMec = (mec => mec === '頭割り' ? '頭割り' : undefined)(oddMec);
                 if (towerStyle === 'KTDN') {
                     // KTDN式: 奇数塔の左右はgetOddHitSideAssignmentで決定
                     // 扇AoE→常に左下, 円AoE→常に右下, 頭割り→偏りに応じてサイド決定
                     const sideAssign = getOddHitSideAssignment(player.debuff.group, currentTowerHit);
                     const side = sideAssign[player.id];
-                    if (side !== undefined) return `active_${side === 'LEFT' ? 'TH' : 'DPS'}_${oddMec}`;
+                    if (side !== undefined) {
+                        const posKey = normMec ?? (side === 'LEFT' ? '扇AoE' : '円AoE');
+                        return `active_${side === 'LEFT' ? 'TH' : 'DPS'}_${posKey}`;
+                    }
                 }
-                return `${status}_${roleType}_${oddMec}`;
+                const posKey = normMec ?? (roleType === 'TH' ? '扇AoE' : '円AoE');
+                return `${status}_${roleType}_${posKey}`;
             }
             // 非アクティブ 奇数: 全員ロールで位置決定
             if (currentTowerHit % 2 === 1) {
@@ -1687,6 +1694,7 @@
         }
 
         let slideInProgress = false;
+        let thInitialAoE = '扇AoE'; // TH側の初期AoEタイプ ('円AoE' or '扇AoE')
         let ultimateFailed = false;
 
         function showUltimateFailed() {
@@ -1983,6 +1991,7 @@
             const patternA = Math.random() < 0.5;
             const thAoE  = patternA ? '円AoE' : '扇AoE';
             const dpsAoE = patternA ? '扇AoE' : '円AoE';
+            thInitialAoE = thAoE; // グローバルに記録 → 奇数ヒット割り当てで使用
 
             const thPlayers  = players.filter(p => p.role === 'TANK' || p.role === 'HEALER');
             const dpsPlayers = players.filter(p => p.role === 'DPS');
@@ -2026,16 +2035,18 @@
             const mrIds = shuffle(groupPlayers.filter(p => p.role === 'DPS').map(p => p.id));
 
             if (hit % 2 === 1) {
-                // 奇数回（頭割り有）: T+Hペアに 頭割り + 扇AoE、M+Rペアに 頭割り + 円AoE
+                // 奇数回（頭割り有）: TH側が初期AoEタイプ、DPS側が逆のAoEタイプ
+                const thNonHeadAoE  = thInitialAoE;
+                const dpsNonHeadAoE = thInitialAoE === '円AoE' ? '扇AoE' : '円AoE';
                 if (thIds.length >= 2 && mrIds.length >= 2) {
                     assignment[thIds[0]] = '頭割り';
-                    assignment[thIds[1]] = '扇AoE';
+                    assignment[thIds[1]] = thNonHeadAoE;
                     assignment[mrIds[0]] = '頭割り';
-                    assignment[mrIds[1]] = '円AoE';
+                    assignment[mrIds[1]] = dpsNonHeadAoE;
                 } else {
                     const all = shuffle(groupPlayers.map(p => p.id));
                     assignment[all[0]] = '頭割り'; assignment[all[1]] = '頭割り';
-                    assignment[all[2]] = '扇AoE';  assignment[all[3]] = '円AoE';
+                    assignment[all[2]] = thNonHeadAoE; assignment[all[3]] = dpsNonHeadAoE;
                 }
             } else {
                 // 偶数回（頭割り無）: 円AoE × 2 + 扇AoE × 2（ランダム配置）
