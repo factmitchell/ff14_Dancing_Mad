@@ -306,6 +306,36 @@ button:hover{
 .field-marker.debug-active:active{
     cursor:grabbing;
 }
+
+#field-overlay{
+    position:absolute;
+    left:0;
+    top:0;
+    width:100%;
+    height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,0.55);
+    z-index:20;
+}
+
+#field-overlay-btn{
+    padding:18px 60px;
+    font-size:40px;
+    font-weight:bold;
+    border:3px solid rgba(255,255,255,0.75);
+    border-radius:16px;
+    background:rgba(15,15,30,0.92);
+    color:#fff;
+    cursor:pointer;
+    letter-spacing:4px;
+}
+
+#field-overlay-btn:hover{
+    background:rgba(40,40,70,0.95);
+    border-color:#fff;
+}
 </style>
 </head>
 <body>
@@ -316,7 +346,6 @@ button:hover{
 
 <div id="field"></div>
 
-<button id="retry">やり直し</button>
 
 <div id="image-controls">
     <label>
@@ -828,6 +857,8 @@ updateLog();
 
 setInterval(()=>{
 
+    if(!gameStarted) return;
+
     roles.forEach(role=>{
 
         if(role.time > 0){
@@ -850,10 +881,36 @@ setInterval(()=>{
 const field =
     document.getElementById("field");
 
-initStaticField();
+let gameStarted = false;
 
-const retryButton =
-    document.getElementById("retry");
+function showFieldOverlay(text, onClickFn){
+    let overlay = field.querySelector("#field-overlay");
+    if(!overlay){
+        overlay = document.createElement("div");
+        overlay.id = "field-overlay";
+        const btn = document.createElement("button");
+        btn.id = "field-overlay-btn";
+        overlay.appendChild(btn);
+        field.appendChild(overlay);
+    }
+    const btn = overlay.querySelector("#field-overlay-btn");
+    btn.textContent = text;
+    btn.onclick = (e) => { e.stopPropagation(); onClickFn(); };
+    overlay.style.display = "flex";
+}
+
+function hideFieldOverlay(){
+    const overlay = field.querySelector("#field-overlay");
+    if(overlay) overlay.style.display = "none";
+}
+
+function startGame(){
+    gameStarted = true;
+    hideFieldOverlay();
+}
+
+initStaticField();
+showFieldOverlay("START", startGame);
 
 function getNextRoleIndex(){
     const unassigned = roles
@@ -926,6 +983,11 @@ function showResultImage(){
     } else {
         imageMessage.textContent = "正解画像を表示";
     }
+
+    showFieldOverlay("再挑戦", () => {
+        hideFieldOverlay();
+        resetGame();
+    });
 }
 
 function hideResultImage(){
@@ -950,8 +1012,6 @@ function resetGame(){
     imageMessage.textContent = alwaysShowImage.checked ? "常に正解画像を表示します" : "";
 }
 
-retryButton.addEventListener("click", resetGame);
-
 alwaysShowImage.addEventListener("change", ()=>{
     if(alwaysShowImage.checked){
         field.classList.add("show-correct");
@@ -967,6 +1027,7 @@ updateArrowVisibility();
 field.addEventListener("click",(e)=>{
 
     if(debugMode) return;
+    if(!gameStarted) return;
 
     const roleIndex = getNextRoleIndex();
     if(roleIndex === null){
