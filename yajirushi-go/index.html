@@ -336,6 +336,108 @@ button:hover{
     background:rgba(40,40,70,0.95);
     border-color:#fff;
 }
+
+#score-attack-panel{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:12px;
+    margin:10px auto;
+    max-width:900px;
+    color:#fff;
+    font-size:16px;
+    flex-wrap:wrap;
+}
+
+#score-attack-panel label{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    cursor:pointer;
+}
+
+#timeoutInput{
+    width:72px;
+    padding:4px 6px;
+    font-size:16px;
+    border-radius:6px;
+    border:1px solid #666;
+    background:#333;
+    color:#fff;
+    text-align:center;
+}
+
+#consecutive-display{
+    font-size:20px;
+    font-weight:bold;
+    color:#ffd700;
+    min-width:80px;
+}
+
+.score-panel{
+    background:rgba(8,8,20,0.97);
+    border:2px solid rgba(255,255,255,0.3);
+    border-radius:16px;
+    padding:24px 36px;
+    text-align:center;
+    max-width:540px;
+    width:90%;
+    color:#fff;
+    max-height:80%;
+    overflow-y:auto;
+}
+
+.score-streak-label{
+    font-size:22px;
+    margin-bottom:6px;
+    color:#ffd700;
+}
+
+.score-value-label{
+    font-size:40px;
+    font-weight:bold;
+    margin-bottom:16px;
+    letter-spacing:2px;
+}
+
+.score-history-title{
+    font-size:14px;
+    color:#aaa;
+    margin-bottom:6px;
+    text-align:left;
+    border-top:1px solid rgba(255,255,255,0.15);
+    padding-top:12px;
+}
+
+.score-history-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    margin-bottom:16px;
+}
+
+.score-history-table th{
+    background:rgba(255,255,255,0.08);
+    padding:4px 8px;
+    border:1px solid rgba(255,255,255,0.15);
+    color:#aaa;
+}
+
+.score-history-table td{
+    padding:4px 8px;
+    border:1px solid rgba(255,255,255,0.08);
+}
+
+.score-history-table tr.rank-1 td{ color:#ffd700; font-weight:bold; }
+.score-history-table tr.rank-2 td{ color:#c0c0c0; }
+.score-history-table tr.rank-3 td{ color:#cd7f32; }
+
+.score-panel #field-overlay-btn{
+    padding:10px 36px;
+    font-size:22px;
+    letter-spacing:2px;
+    margin-top:4px;
+}
 </style>
 </head>
 <body>
@@ -346,6 +448,16 @@ button:hover{
 
 <div id="field"></div>
 
+<div id="score-attack-panel">
+    <label>
+        <input id="scoreAttackEnabled" type="checkbox" checked>
+        スコアアタック
+    </label>
+    <span>タイムアウト:</span>
+    <input id="timeoutInput" type="number" value="5.0" min="0.1" max="60" step="0.1">
+    <span>秒</span>
+    <span id="consecutive-display">連続: <strong>0</strong></span>
+</div>
 
 <div id="image-controls">
     <label>
@@ -617,6 +729,8 @@ function recordPatternResult(){
 
 /* 固定秒数 */
 
+let currentTimeoutSeconds = 5.0;
+
 // 対称グリッド: UL(261/365, 107/205) / UR(535/639, 107/205)
 //               LL(261/365, 395/493) / LR(535/639, 395/493)
 const towerData = [
@@ -699,11 +813,13 @@ function initRoles(){
         return;
     }
 
-    const times = Math.random() < 0.5 ? [3, 5] : [5, 3];
+    const longTime  = Math.round(currentTimeoutSeconds * 10);
+    const shortTime = Math.max(1, Math.round(currentTimeoutSeconds * 0.6 * 10));
+    const tArr = Math.random() < 0.5 ? [shortTime, longTime] : [longTime, shortTime];
     roles.push(
         {
             arrow: pair.arrows[0],
-            time: times[0],
+            time: tArr[0],
             x: null,
             y: null,
             targetX: pair.targets[0].x,
@@ -712,7 +828,7 @@ function initRoles(){
         },
         {
             arrow: pair.arrows[1],
-            time: times[1],
+            time: tArr[1],
             x: null,
             y: null,
             targetX: pair.targets[1].x,
@@ -765,7 +881,7 @@ function drawRoles(){
             <div class="arrow">${role.arrow}</div>
             <div class="time"
                  style="color:${color}">
-                ${Math.max(role.time,0)}
+                ${Math.max(Math.ceil(role.time / 10), 0)}
             </div>
             <div class="${statusClass}">${statusText}</div>
         `;
@@ -870,11 +986,11 @@ setInterval(()=>{
     drawRoles();
 
     const allTimedOut = roles.every(role => role.time <= 0);
-    if(allTimedOut){
+    if(allTimedOut && !resultShown){
         showResultImage();
     }
 
-},1000);
+},100);
 
 /* 矢印配置 */
 
@@ -883,19 +999,84 @@ const field =
 
 let gameStarted = false;
 
-function showFieldOverlay(text, onClickFn){
+/* ── スコアアタック ─────────────────────────────────────────── */
+
+let scoreAttackEnabled = true;
+let consecutiveCount   = 0;
+const scoreHistory     = [];
+
+function calcScore(streak, timeout){
+    if(streak === 0) return 0;
+    return streak * Math.max(1, Math.round(500 / timeout));
+}
+
+function addScoreHistory(score, streak, timeout){
+    scoreHistory.push({
+        score,
+        streak,
+        timeout: Math.round(timeout * 10) / 10
+    });
+    scoreHistory.sort((a, b) => b.score - a.score);
+    if(scoreHistory.length > 50) scoreHistory.pop();
+}
+
+function buildHistoryHTML(){
+    const top10 = scoreHistory.slice(0, 10);
+    if(top10.length === 0) return "";
+    const rows = top10.map((h, i) => {
+        const cls = i === 0 ? "rank-1" : i === 1 ? "rank-2" : i === 2 ? "rank-3" : "";
+        return `<tr class="${cls}"><td>${i+1}</td><td>${h.score.toLocaleString()}</td><td>${h.streak}回</td><td>${h.timeout}秒</td></tr>`;
+    }).join("");
+    return `
+        <div class="score-history-title">ハイスコア TOP10</div>
+        <table class="score-history-table">
+            <tr><th>順位</th><th>スコア</th><th>連続</th><th>タイムアウト</th></tr>
+            ${rows}
+        </table>
+    `;
+}
+
+function updateConsecutiveDisplay(){
+    const el = document.getElementById("consecutive-display");
+    if(el) el.innerHTML = `連続: <strong>${consecutiveCount}</strong>`;
+}
+
+/* ── オーバーレイ ────────────────────────────────────────────── */
+
+function getOrCreateOverlay(){
     let overlay = field.querySelector("#field-overlay");
     if(!overlay){
         overlay = document.createElement("div");
         overlay.id = "field-overlay";
-        const btn = document.createElement("button");
-        btn.id = "field-overlay-btn";
-        overlay.appendChild(btn);
         field.appendChild(overlay);
     }
+    return overlay;
+}
+
+function showFieldOverlay(text, onClickFn){
+    const overlay = getOrCreateOverlay();
+    overlay.innerHTML = `<button id="field-overlay-btn"></button>`;
     const btn = overlay.querySelector("#field-overlay-btn");
     btn.textContent = text;
     btn.onclick = (e) => { e.stopPropagation(); onClickFn(); };
+    overlay.style.display = "flex";
+}
+
+function showScorePanel(streak, score, onRetry){
+    const overlay = getOrCreateOverlay();
+    const resultLabel = streak > 0 ? `${streak}連続成功！` : "失敗...";
+    overlay.innerHTML = `
+        <div class="score-panel">
+            <div class="score-streak-label">${resultLabel}</div>
+            <div class="score-value-label">スコア: ${score.toLocaleString()}</div>
+            ${buildHistoryHTML()}
+            <button id="field-overlay-btn">再挑戦</button>
+        </div>
+    `;
+    overlay.querySelector("#field-overlay-btn").onclick = (e) => {
+        e.stopPropagation();
+        onRetry();
+    };
     overlay.style.display = "flex";
 }
 
@@ -984,10 +1165,28 @@ function showResultImage(){
         imageMessage.textContent = "正解画像を表示";
     }
 
-    showFieldOverlay("再挑戦", () => {
-        hideFieldOverlay();
-        resetGame();
-    });
+    if(scoreAttackEnabled){
+        if(lastResultCorrect){
+            consecutiveCount++;
+            updateConsecutiveDisplay();
+            setTimeout(() => { resetGame(); }, 600);
+        } else {
+            const score      = calcScore(consecutiveCount, currentTimeoutSeconds);
+            const finalStreak = consecutiveCount;
+            addScoreHistory(score, finalStreak, currentTimeoutSeconds);
+            consecutiveCount = 0;
+            updateConsecutiveDisplay();
+            showScorePanel(finalStreak, score, () => {
+                hideFieldOverlay();
+                resetGame();
+            });
+        }
+    } else {
+        showFieldOverlay("再挑戦", () => {
+            hideFieldOverlay();
+            resetGame();
+        });
+    }
 }
 
 function hideResultImage(){
@@ -1142,6 +1341,24 @@ document.addEventListener("mousemove", e => {
 
 document.addEventListener("mouseup", () => {
     debugDragTarget = null;
+});
+
+/* ── スコアアタック コントロール ────────────────────────────── */
+
+document.getElementById("scoreAttackEnabled").addEventListener("change", (e) => {
+    scoreAttackEnabled = e.target.checked;
+    consecutiveCount = 0;
+    updateConsecutiveDisplay();
+});
+
+document.getElementById("timeoutInput").addEventListener("change", (e) => {
+    const val = parseFloat(e.target.value);
+    if(!isNaN(val) && val >= 0.1){
+        currentTimeoutSeconds = Math.round(val * 10) / 10;
+        e.target.value = currentTimeoutSeconds.toFixed(1);
+    } else {
+        e.target.value = currentTimeoutSeconds.toFixed(1);
+    }
 });
 
 </script>
