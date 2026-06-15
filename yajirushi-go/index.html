@@ -438,6 +438,18 @@ button:hover{
     letter-spacing:2px;
     margin-top:4px;
 }
+
+#pattern-stats input[type=checkbox]:disabled{
+    opacity:0.35;
+    cursor:not-allowed;
+}
+
+#enable-all-patterns:disabled,
+#disable-all-patterns:disabled{
+    opacity:0.3;
+    cursor:not-allowed;
+    pointer-events:none;
+}
 </style>
 </head>
 <body>
@@ -730,6 +742,10 @@ function recordPatternResult(){
 /* 固定秒数 */
 
 let currentTimeoutSeconds = 5.0;
+let scoreAttackEnabled    = true;
+let consecutiveCount      = 0;
+let savedPatternState     = null;
+const scoreHistory        = [];
 
 // 対称グリッド: UL(261/365, 107/205) / UR(535/639, 107/205)
 //               LL(261/365, 395/493) / LR(535/639, 395/493)
@@ -956,6 +972,8 @@ function updatePatternTable(){
             }
         });
     });
+
+    applyPatternTableLock();
 }
 
 function setAllPatterns(enabled){
@@ -1001,10 +1019,6 @@ let gameStarted = false;
 
 /* ── スコアアタック ─────────────────────────────────────────── */
 
-let scoreAttackEnabled = true;
-let consecutiveCount   = 0;
-const scoreHistory     = [];
-
 function calcScore(streak, timeout){
     if(streak === 0) return 0;
     return streak * Math.max(1, Math.round(500 / timeout));
@@ -1039,6 +1053,17 @@ function buildHistoryHTML(){
 function updateConsecutiveDisplay(){
     const el = document.getElementById("consecutive-display");
     if(el) el.innerHTML = `連続: <strong>${consecutiveCount}</strong>`;
+}
+
+function applyPatternTableLock(){
+    const locked = scoreAttackEnabled;
+    document.querySelectorAll("#pattern-stats-body input[type=checkbox]").forEach(cb => {
+        cb.disabled = locked;
+    });
+    const enableAllBtn  = document.getElementById("enable-all-patterns");
+    const disableAllBtn = document.getElementById("disable-all-patterns");
+    if(enableAllBtn)  enableAllBtn.disabled  = locked;
+    if(disableAllBtn) disableAllBtn.disabled = locked;
 }
 
 /* ── オーバーレイ ────────────────────────────────────────────── */
@@ -1085,9 +1110,15 @@ function hideFieldOverlay(){
     if(overlay) overlay.style.display = "none";
 }
 
+function setTimeoutInputEnabled(enabled){
+    const el = document.getElementById("timeoutInput");
+    if(el) el.disabled = !enabled;
+}
+
 function startGame(){
     gameStarted = true;
     hideFieldOverlay();
+    setTimeoutInputEnabled(false);
 }
 
 initStaticField();
@@ -1154,6 +1185,7 @@ function updateArrowVisibility(){
 function showResultImage(){
     field.classList.add("show-correct");
     resultShown = true;
+    setTimeoutInputEnabled(true);
     lastResultCorrect = roles.every((role, index) => isCorrectPlacement(role, index));
     recordPatternResult();
     updateLog();
@@ -1196,6 +1228,7 @@ function hideResultImage(){
 function resetGame(){
     field.querySelectorAll(".marker").forEach(marker=>marker.remove());
     nextRole = 0;
+    setTimeoutInputEnabled(false);
     resultShown = false;
     lastResultCorrect = false;
     initRoles();
@@ -1349,6 +1382,21 @@ document.getElementById("scoreAttackEnabled").addEventListener("change", (e) => 
     scoreAttackEnabled = e.target.checked;
     consecutiveCount = 0;
     updateConsecutiveDisplay();
+    if(scoreAttackEnabled){
+        savedPatternState = { ...enabledPatterns };
+        setAllPatterns(true);
+    } else {
+        if(savedPatternState){
+            Object.keys(enabledPatterns).forEach(key => {
+                enabledPatterns[key] = savedPatternState[key] !== undefined
+                    ? savedPatternState[key]
+                    : true;
+            });
+            savedPatternState = null;
+        }
+        updatePatternTable();
+    }
+    applyPatternTableLock();
 });
 
 document.getElementById("timeoutInput").addEventListener("change", (e) => {
