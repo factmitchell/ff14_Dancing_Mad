@@ -1975,37 +1975,46 @@
         }
 
         function assignTowerGroups() {
-            // KTヤーン式: ペア単位で先組/後組を決定
-            // 先組 = 頭割りのあるTHペア全員 + 頭割りのあるDPSペア全員（1T+1H+2DPS）
-            // 後組 = 残りのTHペア全員 + 残りのDPSペア全員（1T+1H+2DPS）
+            // ── ミッシング初期デバフ ──────────────────────────────────────────
+            // TH×4: 1名が頭割り、残り3名が同じAoEタイプ
+            // DPS×4: 1名が頭割り、残り3名が逆のAoEタイプ
+            // パターンA: TH=円AoE / DPS=扇AoE
+            // パターンB: TH=扇AoE / DPS=円AoE
+            const patternA = Math.random() < 0.5;
+            const thAoE  = patternA ? '円AoE' : '扇AoE';
+            const dpsAoE = patternA ? '扇AoE' : '円AoE';
 
-            // TH: pair0(MT/H1) か pair1(ST/H2) の1ペアをまるごと先組に
-            const thSakiPairIdx = Math.random() < 0.5 ? 0 : 1;
-            const thAtoPairIdx  = 1 - thSakiPairIdx;
+            const thPlayers  = players.filter(p => p.role === 'TANK' || p.role === 'HEALER');
+            const dpsPlayers = players.filter(p => p.role === 'DPS');
 
-            // DPS: pair2(D1/D3) か pair3(D2/D4) の1ペアをまるごと先組に
-            const dpsSakiPairIdx = Math.random() < 0.5 ? 2 : 3;
-            const dpsAtoPairIdx  = dpsSakiPairIdx === 2 ? 3 : 2;
+            // TH / DPS それぞれランダムに1名を頭割りに選択
+            const thHeadIdx  = Math.floor(Math.random() * thPlayers.length);
+            const dpsHeadIdx = Math.floor(Math.random() * dpsPlayers.length);
 
-            // 先組ペア: 両名に頭割りを付与
-            [thSakiPairIdx, dpsSakiPairIdx].forEach(pairIdx => {
-                pairGroups[pairIdx].forEach(id => {
-                    const p = players.find(pl => pl.id === id);
-                    p.debuff.group = '先組'; p.type = '先組';
-                    p.debuff.mechanic = '頭割り'; p.initialMechanic = '頭割り';
-                    p.current_turn_active = false;
-                });
+            thPlayers.forEach((p, i) => {
+                const mec = i === thHeadIdx ? '頭割り' : thAoE;
+                p.debuff.mechanic = mec; p.initialMechanic = mec;
+                p.current_turn_active = false;
+            });
+            dpsPlayers.forEach((p, i) => {
+                const mec = i === dpsHeadIdx ? '頭割り' : dpsAoE;
+                p.debuff.mechanic = mec; p.initialMechanic = mec;
+                p.current_turn_active = false;
             });
 
-            // 後組ペア: 1人が円AoE、1人が扇AoE（シャッフルで割り当て）
-            [thAtoPairIdx, dpsAtoPairIdx].forEach(pairIdx => {
-                const members = shuffle(pairGroups[pairIdx].map(id => players.find(p => p.id === id)));
-                members[0].debuff.group = '後組'; members[0].type = '後組';
-                members[0].debuff.mechanic = '円AoE'; members[0].initialMechanic = '円AoE';
-                members[0].current_turn_active = false;
-                members[1].debuff.group = '後組'; members[1].type = '後組';
-                members[1].debuff.mechanic = '扇AoE'; members[1].initialMechanic = '扇AoE';
-                members[1].current_turn_active = false;
+            // ── 先組/後組 の決定 ────────────────────────────────────────────
+            // 後組 hit4 は initialMechanic をそのまま使うため、
+            // 頭割りプレイヤーのペアを先組にして後組には頭割り不在にする
+            const thHeadPlayer  = thPlayers[thHeadIdx];
+            const dpsHeadPlayer = dpsPlayers[dpsHeadIdx];
+            const thSakiPairIdx  = pairGroups.findIndex(pair => pair.includes(thHeadPlayer.id));
+            const dpsSakiPairIdx = pairGroups.findIndex(pair => pair.includes(dpsHeadPlayer.id));
+
+            players.forEach(p => {
+                const pairIdx = pairGroups.findIndex(pair => pair.includes(p.id));
+                const isSaki = (pairIdx === thSakiPairIdx || pairIdx === dpsSakiPairIdx);
+                p.debuff.group = isSaki ? '先組' : '後組';
+                p.type         = isSaki ? '先組' : '後組';
             });
         }
 
