@@ -287,6 +287,19 @@ function lineDist(p, angleDeg){
     return Math.abs((p.x - C) * Math.cos(r) + (p.y - C) * Math.sin(r));
 }
 
+/* ───────────────────────────── フィールドマーカー（eye-gazing より移植） ─────
+   ベース600座標。配置: A=北, B=東, C=南, D=西 / 1=北西, 2=北東, 3=南東, 4=南西 */
+const fieldMarkerData = [
+    { x: 300, y:  78, label: 'A', color: '#ff6090' },
+    { x: 412, y: 179, label: '2', color: '#ffd700' },
+    { x: 511, y: 300, label: 'B', color: '#ffa040' },
+    { x: 410, y: 416, label: '3', color: '#40c8ff' },
+    { x: 300, y: 522, label: 'C', color: '#40c8ff' },
+    { x: 177, y: 419, label: '4', color: '#c080ff' },
+    { x:  89, y: 300, label: 'D', color: '#c080ff' },
+    { x: 182, y: 182, label: '1', color: '#d0d0d0' },
+];
+
 /* ───────────────────────────── ギミック状態 ───────────────────────────── */
 const g = {
     dashAngles: [], observeRevealed: 0,
@@ -386,9 +399,31 @@ function drawArena(){
     for(let r=60;r<R;r+=60){ ctx.beginPath(); ctx.arc(C,C,r,0,Math.PI*2); ctx.stroke(); }
     ctx.beginPath(); ctx.moveTo(C,C-R); ctx.lineTo(C,C+R); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(C-R,C); ctx.lineTo(C+R,C); ctx.stroke();
+    // フィールドマーカー（プレイヤー・予兆より下）
+    drawFieldMarkers();
     // 中央ボス（ケフカ）
     fillCircle(C,C,18,'rgba(120,40,160,0.55)');
     strokeCircle(C,C,18,'rgba(200,120,240,0.8)',2);
+}
+
+function drawFieldMarkers(){
+    const h = 13;
+    fieldMarkerData.forEach(m=>{
+        ctx.save();
+        ctx.shadowColor = m.color;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = 'rgba(5,5,12,0.88)';
+        ctx.fillRect(m.x-h, m.y-h, h*2, h*2);
+        ctx.strokeStyle = m.color;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(m.x-h, m.y-h, h*2, h*2);
+        ctx.restore();
+        ctx.fillStyle = m.color;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(m.label, m.x, m.y);
+    });
 }
 
 function drawObserveMarkers(showAll){
