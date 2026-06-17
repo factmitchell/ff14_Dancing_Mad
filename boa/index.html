@@ -4,7 +4,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P3前半 バウル・オブ・アゴニー＆アルテマブラスター シミュレーター</title>
+<title>P3 アルテマブラスター シミュレーター</title>
 <style>
     body{
         font-family:'Helvetica Neue', Arial, sans-serif;
@@ -188,8 +188,8 @@
 </head>
 <body>
 
-<h1>P3前半 バウル・オブ・アゴニー ＆ アルテマブラスター</h1>
-<div class="subtitle">絶ケフカ風 ギミック練習シミュレーター（アニメ再生＋回避）</div>
+<h1>P3 アルテマブラスター</h1>
+<div class="subtitle">絶ケフカ風 ギミック練習シミュレーター（観察→逆順回避）</div>
 
 <div id="role-select">
     <div class="label">自分のロールを選択</div>
@@ -198,7 +198,6 @@
 <div id="hud">
     <div class="hud-box"><span class="k">フェーズ</span><span class="v" id="phaseLabel">―</span></div>
     <div class="hud-box"><span class="k">自ロール</span><span class="v" id="roleLabel">―</span></div>
-    <div class="hud-box"><span class="k">デバフ</span><span class="v" id="debuffLabel">―</span></div>
     <div class="hud-box"><span class="k">被弾</span><span class="v" id="hitLabel">0 / 0</span></div>
 </div>
 
@@ -209,7 +208,7 @@
     <canvas id="field" width="600" height="600"></canvas>
     <div id="overlay">
         <div class="big" id="ovTitle">START</div>
-        <div class="sub" id="ovSub">自キャラ（リング表示）をドラッグして安置へ移動。各攻撃を回避しよう。</div>
+        <div class="sub" id="ovSub">自キャラ（リング表示）をドラッグして突進レーザーを回避しよう。</div>
         <button id="ovBtn">START</button>
     </div>
 </div>
@@ -223,9 +222,8 @@
 </div>
 
 <div id="legend">
-    <b>遊び方</b>：自分のロールを選んで START。攻撃ごとに予兆（赤＝危険／<span class="swatch" style="background:#39d353"></span>緑＝推奨安置）が出るので、<b>白いリングの自キャラをドラッグ</b>して安置へ。予兆が消える瞬間に危険範囲にいると「被弾」になります（練習なので即死せず最後まで進行）。<br>
-    <b>バウル・オブ・アゴニー</b>：<span class="swatch" style="background:#ff7a2a"></span>炎クリスタル＝ドーナツ（穴 or 外周が安置）、<span class="swatch" style="background:#3aa0ff"></span>水クリスタル＝円（離れる）。インプロージョン直線×2、最後に真空波ノックバック（中央寄りで落下回避）。<br>
-    <b>アルテマブラスター</b>：8本の突進が順番に出る「観察」→ 同じ位置が<b>逆順</b>で実際に来る「誘導」。順番を覚えて回避。<br>
+    <b>遊び方</b>：自分のロールを選んで START。突進レーザーの予兆（赤）と<span class="swatch" style="background:#39d353"></span>緑＝推奨安置が出るので、<b>白いリングの自キャラをドラッグ</b>して直線から離れて回避。予兆が消える瞬間に範囲内にいると「被弾」になります（練習なので即死せず最後まで進行）。<br>
+    <b>アルテマブラスター</b>：8本の突進が順番に出る「観察」フェーズ → 同じ位置が<b>逆順</b>で実際に来る「誘導」フェーズ。出現順を覚えて逆順で回避。<br>
     ※ ギミック解釈は <a href="https://drippy-sokuhou.com/articles/kefka-p3-front" target="_blank" rel="noopener">drippy-sokuhou（P3前半 TLB3式）</a> を参考にした簡略再現です。
 </div>
 
@@ -291,97 +289,13 @@ function lineDist(p, angleDeg){
 
 /* ───────────────────────────── ギミック状態 ───────────────────────────── */
 const g = {
-    fire: null, water: null, windCrystals: [],
     dashAngles: [], observeRevealed: 0,
-    knockAnim: null,
 };
-let myDebuff = '―';
 
-/* ベース毎にランダム生成するビート列を作る */
+/* ベース毎にランダム生成するビート列を作る（アルテマブラスターのみ） */
 function generateBeats(){
     const beats = [];
 
-    /* ── バウル・オブ・アゴニー 配置 ── */
-    // 炎/水は対角配置。使う対角を選び、両端に炎・水を割り当て
-    const diag = Math.random() < 0.5 ? [315, 135] : [45, 225]; // NW-SE or NE-SW
-    const fireFirst = Math.random() < 0.5;
-    const fireAngle  = fireFirst ? diag[0] : diag[1];
-    const waterAngle = fireFirst ? diag[1] : diag[0];
-    g.fire  = { ...pointAt(fireAngle, 215), angle: fireAngle };
-    g.water = { ...pointAt(waterAngle, 215), angle: waterAngle };
-    // 残りの対角を風クリスタル（装飾）
-    const otherDiag = diag[0] === 315 ? [45, 225] : [315, 135];
-    g.windCrystals = otherDiag.map(a => pointAt(a, 215));
-
-    // 自分のデバフ（風/逆風＋一部に炎/水）
-    const windKind = Math.random() < 0.5 ? '混沌の風' : '混沌の逆風';
-    const ew = Math.random();
-    let elem = '';
-    if(ew < 0.25) elem = '／炎';
-    else if(ew < 0.5) elem = '／水';
-    myDebuff = windKind + elem;
-
-    const FIRE_HOLE = 60, FIRE_OUT = 155, WATER_R = 150;
-
-    // 炎/水クリスタルの安置判定（穴の中 or 外周 / 水円から離れる）
-    function crystalSafe(p){
-        const dw = dist(p, g.water);
-        const df = dist(p, g.fire);
-        const okWater = dw > WATER_R;
-        const okFire  = df < FIRE_HOLE || df > FIRE_OUT;
-        return okWater && okFire;
-    }
-    function crystalDraw(alpha){
-        // 水：円
-        fillCircle(g.water.x, g.water.y, WATER_R, `rgba(58,160,255,${0.16+0.22*alpha})`);
-        strokeCircle(g.water.x, g.water.y, WATER_R, `rgba(58,160,255,${0.5+0.4*alpha})`, 2);
-        // 炎：ドーナツ
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(g.fire.x, g.fire.y, FIRE_OUT, 0, Math.PI*2);
-        ctx.arc(g.fire.x, g.fire.y, FIRE_HOLE, 0, Math.PI*2, true);
-        ctx.fillStyle = `rgba(255,122,42,${0.16+0.24*alpha})`;
-        ctx.fill('evenodd');
-        ctx.restore();
-        strokeCircle(g.fire.x, g.fire.y, FIRE_OUT, `rgba(255,122,42,${0.5+0.4*alpha})`, 2);
-        strokeCircle(g.fire.x, g.fire.y, FIRE_HOLE, `rgba(255,200,120,0.7)`, 1.5);
-    }
-
-    // 1) サンダガ（全体）
-    beats.push(raidwide('バウル', 'サンダガ', 'エクスデスの全体攻撃。軽減して受ける（位置回避なし）'));
-
-    // 2) 炎・水 1回目（短）
-    beats.push({
-        phase:'バウル', label:'炎・水 1回目（短）', evaluate:true,
-        instr:'炎=ドーナツ（穴 or 外周）／水=円（離れる）。安置へ移動',
-        telegraphMs:3400,
-        draw: crystalDraw,
-        isSafe: crystalSafe,
-        recommend: () => ({ ...g.fire }), // 炎の穴は常に安全
-    });
-
-    // 3) サンダガ 強 ×2
-    beats.push(raidwide('バウル', 'サンダガ 強 ×2', '連続全体攻撃。軽減で対応（位置回避なし）'));
-
-    // 4) インプロージョン ×2（直線、垂直に2連）
-    const impAxis = Math.random() < 0.5 ? 0 : 90; // 縦 or 横 から
-    beats.push(cleaveBeat('バウル', 'インプロージョン ①', impAxis));
-    beats.push(cleaveBeat('バウル', 'インプロージョン ②', impAxis + 90));
-
-    // 5) 炎・水 2回目（長）
-    beats.push({
-        phase:'バウル', label:'炎・水 2回目（長）', evaluate:true,
-        instr:'2回目の炎・水。再び安置へ',
-        telegraphMs:3400,
-        draw: crystalDraw,
-        isSafe: crystalSafe,
-        recommend: () => ({ ...g.fire }),
-    });
-
-    // 6) アンブラスマッシュ＋真空波（中央からノックバック）
-    beats.push(knockbackBeat());
-
-    /* ── アルテマブラスター ── */
     // 8本の突進角度（45度刻み・ランダム開始＆回転方向）
     const start = Math.floor(Math.random()*8)*45;
     const dir = Math.random() < 0.5 ? 1 : -1;
@@ -389,19 +303,19 @@ function generateBeats(){
     for(let i=0;i<8;i++) g.dashAngles.push(((start + dir*45*i)%360 + 360)%360);
     g.observeRevealed = 0;
 
-    beats.push(raidwide('アルテマ', '突進フォーム（観察開始）', '8本の突進の「順番」と「位置」を覚える'));
+    beats.push(raidwide('観察', '突進フォーム（観察開始）', '8本の突進の「順番」と「位置」を覚える'));
     // 観察：1本ずつ出現
     for(let i=0;i<8;i++){
         beats.push(observeBeat(i));
     }
-    beats.push(raidwide('アルテマ', '誘導フェーズ開始', '同じ位置が【逆順】で実際に来る。回避準備'));
+    beats.push(raidwide('誘導', '誘導フェーズ開始', '同じ位置が【逆順】で実際に来る。回避準備'));
     // 誘導：逆順で発射
     for(let i=7;i>=0;i--){
         beats.push(dashBeat(i, 7 - i + 1));
     }
 
     // 締め：サンダガ強×2
-    beats.push(raidwide('アルテマ', 'サンダガ 強 ×2', '散開後の連続全体攻撃。軽減で対応'));
+    beats.push(raidwide('誘導', 'サンダガ 強 ×2', '散開後の連続全体攻撃。軽減で対応'));
 
     return beats;
 }
@@ -418,73 +332,9 @@ function raidwide(phase, label, instr){
         isSafe:()=>true,
     };
 }
-function cleaveBeat(phase, label, angle){
-    const W = 62; // 直線半幅
-    return {
-        phase, label, evaluate:true,
-        instr:'カオスの直線範囲。直線から離れて回避',
-        telegraphMs:2600,
-        draw:(alpha)=>{
-            ctx.save();
-            ctx.translate(C, C);
-            ctx.rotate(angle * Math.PI/180);
-            ctx.fillStyle = `rgba(200,40,255,${0.16+0.26*alpha})`;
-            ctx.fillRect(-W, -R-20, W*2, (R+20)*2);
-            ctx.strokeStyle = `rgba(220,120,255,${0.6+0.3*alpha})`;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(-W, -R-20, W*2, (R+20)*2);
-            ctx.restore();
-        },
-        isSafe:(p)=> lineDist(p, angle) > W + PLAYER_R - 6,
-        recommend:()=>{
-            const r = (angle+90) * Math.PI/180;
-            return { x: C + Math.sin(r)*190, y: C - Math.cos(r)*190 };
-        },
-    };
-}
-function knockbackBeat(){
-    const KB = 165;
-    return {
-        phase:'バウル', label:'アンブラスマッシュ＋真空波', evaluate:true,
-        instr:'中央から全員ノックバック。中央寄りに立って落下を回避（風/逆風で距離は半減可）',
-        telegraphMs:3200,
-        knockback:true, kbDist:KB,
-        draw:(alpha)=>{
-            // 中央の発生源と外周の落下危険リング
-            strokeCircle(C,C, 26, `rgba(255,220,120,${0.6+0.4*alpha})`, 3);
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(C,C,R,0,Math.PI*2);
-            ctx.arc(C,C,R-46,0,Math.PI*2,true);
-            ctx.fillStyle = `rgba(255,80,80,${0.10+0.22*alpha})`;
-            ctx.fill('evenodd');
-            ctx.restore();
-            // ノックバック後の着地予測
-            const land = kbLanding(player, KB);
-            strokeCircle(land.x, land.y, PLAYER_R+4, 'rgba(255,255,255,0.5)', 1.5);
-            ctx.setLineDash([5,5]);
-            ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5;
-            ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(land.x,land.y); ctx.stroke();
-            ctx.setLineDash([]);
-        },
-        isSafe:(p)=>{
-            const land = kbLanding(p, KB);
-            return Math.hypot(land.x-C, land.y-C) <= R - 8;
-        },
-        recommend:()=>({ x:C, y:C+70 }),
-        onResolve:()=>{
-            g.knockAnim = { from:{...player}, to:kbLanding(player,KB), t:0 };
-        },
-    };
-}
-function kbLanding(p, d){
-    let dx = p.x - C, dy = p.y - C;
-    let len = Math.hypot(dx, dy) || 1;
-    return { x: p.x + dx/len*d, y: p.y + dy/len*d };
-}
 function observeBeat(i){
     return {
-        phase:'アルテマ', label:`観察 ${i+1} / 8`, evaluate:false, telegraphMs:760,
+        phase:'観察', label:`観察 ${i+1} / 8`, evaluate:false, telegraphMs:760,
         instr:'突進の出現位置と順番を記憶',
         onTelegraphStart:()=>{ g.observeRevealed = i+1; },
         draw:(alpha)=>{}, // 観察マーカーは drawObserveMarkers でまとめて描画
@@ -495,7 +345,7 @@ function dashBeat(i, order){
     const angle = g.dashAngles[i];
     const W = 40;
     return {
-        phase:'アルテマ', label:`誘導 突進 ${order} / 8`, evaluate:true,
+        phase:'誘導', label:`誘導 突進 ${order} / 8`, evaluate:true,
         instr:'逆順の突進。直線レーザーから離れて回避',
         telegraphMs:1500,
         dashIndex:i,
@@ -536,19 +386,9 @@ function drawArena(){
     for(let r=60;r<R;r+=60){ ctx.beginPath(); ctx.arc(C,C,r,0,Math.PI*2); ctx.stroke(); }
     ctx.beginPath(); ctx.moveTo(C,C-R); ctx.lineTo(C,C+R); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(C-R,C); ctx.lineTo(C+R,C); ctx.stroke();
-    // 中央ボス（カオス）
+    // 中央ボス（ケフカ）
     fillCircle(C,C,18,'rgba(120,40,160,0.55)');
     strokeCircle(C,C,18,'rgba(200,120,240,0.8)',2);
-}
-
-function drawCrystals(){
-    // 風クリスタル（装飾）
-    g.windCrystals.forEach(w=>{
-        fillCircle(w.x,w.y,13,'rgba(80,200,140,0.7)');
-        strokeCircle(w.x,w.y,13,'rgba(160,255,200,0.8)',2);
-    });
-    if(g.water){ fillCircle(g.water.x,g.water.y,13,'rgba(58,160,255,0.85)'); strokeCircle(g.water.x,g.water.y,13,'#bfe4ff',2); }
-    if(g.fire){ fillCircle(g.fire.x,g.fire.y,13,'rgba(255,122,42,0.9)'); strokeCircle(g.fire.x,g.fire.y,13,'#ffd9a0',2); }
 }
 
 function drawObserveMarkers(showAll){
@@ -615,8 +455,6 @@ const RESOLVE_MS = 480, GAP_MS = 320;
 function setHUD(){
     document.getElementById('phaseLabel').textContent = curBeat ? curBeat.phase : '―';
     document.getElementById('roleLabel').textContent = myRole;
-    const dl = document.getElementById('debuffLabel');
-    dl.textContent = myDebuff;
     document.getElementById('hitLabel').textContent = `${hitCount} / ${evalCount}`;
     document.getElementById('instr').textContent =
         curBeat ? (curBeat.instr || curBeat.label) : '―';
@@ -626,7 +464,6 @@ function startRun(){
     beats = generateBeats();
     beatIndex = -1;
     hitCount = 0; evalCount = 0;
-    g.knockAnim = null;
     player.x = C; player.y = C + 150;
     running = true;
     nextBeat();
@@ -657,15 +494,9 @@ function tick(now){
     // 描画
     drawArena();
 
-    const phaseIsBaul = curBeat && curBeat.phase === 'バウル';
-    const phaseIsUltima = curBeat && curBeat.phase === 'アルテマ';
-
-    if(phaseIsBaul) drawCrystals();
-
     // 観察マーカー
-    if(phaseIsUltima){
+    if(curBeat){
         const keep = document.getElementById('chk-keepmark').checked;
-        const isGuide = curBeat.dashIndex !== undefined || curBeat.label.includes('誘導');
         if(curBeat.label.includes('観察') || curBeat.label.includes('突進フォーム')){
             drawObserveMarkers(false);
         } else if(keep){
@@ -690,7 +521,6 @@ function tick(now){
             if(elapsed >= dur){
                 // 解決
                 if(curBeat.evaluate){
-                    if(curBeat.onResolve) curBeat.onResolve();
                     lastResultSafe = curBeat.isSafe(player);
                     evalCount++;
                     if(!lastResultSafe) hitCount++;
@@ -701,14 +531,6 @@ function tick(now){
             }
         }
         else if(state === 'resolve'){
-            // ノックバックアニメ
-            if(g.knockAnim){
-                g.knockAnim.t = Math.min(1, elapsed / 380);
-                const e = 1 - Math.pow(1 - g.knockAnim.t, 3);
-                player.x = g.knockAnim.from.x + (g.knockAnim.to.x - g.knockAnim.from.x)*e;
-                player.y = g.knockAnim.from.y + (g.knockAnim.to.y - g.knockAnim.from.y)*e;
-                if(g.knockAnim.t >= 1) g.knockAnim = null;
-            }
             // 着弾フラッシュ
             const flashA = Math.max(0, 1 - elapsed/RESOLVE_MS);
             if(curBeat.draw) curBeat.draw(1);
@@ -720,7 +542,7 @@ function tick(now){
                 hitFlash = !lastResultSafe && flashA > 0.3;
             }
             setTimerbar(0);
-            if(elapsed >= RESOLVE_MS && !g.knockAnim){
+            if(elapsed >= RESOLVE_MS){
                 state = 'gap';
                 stateStart = now;
             }
@@ -804,7 +626,7 @@ ROLES.forEach(r=>{
 document.getElementById('btn-restart').addEventListener('click', ()=>{
     running = false; state='idle'; curBeat=null;
     setTimerbar(0);
-    showOverlay('START', '自キャラ（リング表示）をドラッグして安置へ移動。各攻撃を回避しよう。', 'START');
+    showOverlay('START', '自キャラ（リング表示）をドラッグして突進レーザーを回避しよう。', 'START');
 });
 document.getElementById('speed').addEventListener('input', e=>{
     speed = parseFloat(e.target.value);
