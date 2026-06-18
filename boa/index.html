@@ -366,8 +366,8 @@ function dashBeat(i, order){
         instr:'逆順の突進。直線レーザーから離れて回避',
         telegraphMs:1500,
         dashIndex:i,
-        // 誘導では最初から全長を表示し、濃さ(alpha)だけ上げて着弾予兆にする
-        draw:(alpha)=> drawDashBand(angle, alpha, 1),
+        // 観察と同じく θ→中央→θ+180 へ突進が伸びる（alpha を伸びの進捗に使用）
+        draw:(alpha)=> drawDashBand(angle, alpha, alpha),
         isSafe:(p)=> lineDist(p, angle) > DASH_W + PLAYER_R - 4,
         recommend:()=>{
             const r = (angle+90) * Math.PI/180;
