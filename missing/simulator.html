@@ -628,21 +628,18 @@
                 }
                 // 奇数ヒット
                 const oddMec = player.debuff.mechanic || 'none';
-                // 位置キーは頭割り以外を正規化: TH→扇AoE, DPS→円AoE
-                // (円/扇どちらでも物理的な塔位置は同じため、保存位置が両パターンに共通適用される)
-                const normMec = (mec => mec === '頭割り' ? '頭割り' : undefined)(oddMec);
                 if (towerStyle === 'KTDN') {
                     // KTDN式: 奇数塔の左右はgetOddHitSideAssignmentで決定
                     // 扇AoE→常に左下, 円AoE→常に右下, 頭割り→偏りに応じてサイド決定
                     const sideAssign = getOddHitSideAssignment(player.debuff.group, currentTowerHit);
                     const side = sideAssign[player.id];
-                    if (side !== undefined) {
-                        const posKey = normMec ?? (side === 'LEFT' ? '扇AoE' : '円AoE');
-                        return `active_${side === 'LEFT' ? 'TH' : 'DPS'}_${posKey}`;
-                    }
+                    if (side !== undefined) return `active_${side === 'LEFT' ? 'TH' : 'DPS'}_${oddMec}`;
                 }
-                const posKey = normMec ?? (roleType === 'TH' ? '扇AoE' : '円AoE');
-                return `${status}_${roleType}_${posKey}`;
+                // KTヤーン (fallback):
+                // 頭割り → ロール別 (TH=左頭, DPS=右頭)
+                // AoE → タイプ別 (扇=左塔下, 円=右塔下) ← ロール不問
+                if (oddMec === '頭割り') return `${status}_${roleType}_頭割り`;
+                return oddMec === '扇AoE' ? `${status}_TH_扇AoE` : `${status}_DPS_円AoE`;
             }
             // 非アクティブ 奇数: 全員ロールで位置決定
             if (currentTowerHit % 2 === 1) {
