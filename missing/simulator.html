@@ -2028,26 +2028,15 @@
             const assignment = {};
             groupPlayers.forEach(p => assignment[p.id] = '');
 
-            const thIds = shuffle(groupPlayers.filter(p => p.role === 'TANK' || p.role === 'HEALER').map(p => p.id));
-            const mrIds = shuffle(groupPlayers.filter(p => p.role === 'DPS').map(p => p.id));
-
+            const all = shuffle(groupPlayers.map(p => p.id));
             if (hit % 2 === 1) {
-                // 奇数回（頭割り有）: TH側が初期AoEタイプ、DPS側が逆のAoEタイプ
-                const thNonHeadAoE  = thInitialAoE;
-                const dpsNonHeadAoE = thInitialAoE === '円AoE' ? '扇AoE' : '円AoE';
-                if (thIds.length >= 2 && mrIds.length >= 2) {
-                    assignment[thIds[0]] = '頭割り';
-                    assignment[thIds[1]] = thNonHeadAoE;
-                    assignment[mrIds[0]] = '頭割り';
-                    assignment[mrIds[1]] = dpsNonHeadAoE;
-                } else {
-                    const all = shuffle(groupPlayers.map(p => p.id));
-                    assignment[all[0]] = '頭割り'; assignment[all[1]] = '頭割り';
-                    assignment[all[2]] = thNonHeadAoE; assignment[all[3]] = dpsNonHeadAoE;
-                }
+                // 奇数回（頭割り有）: 4人中ランダムに2人が頭割り、残り2人が円AoE・扇AoE
+                assignment[all[0]] = '頭割り';
+                assignment[all[1]] = '頭割り';
+                assignment[all[2]] = '円AoE';
+                assignment[all[3]] = '扇AoE';
             } else {
                 // 偶数回（頭割り無）: 円AoE × 2 + 扇AoE × 2（ランダム配置）
-                const all = shuffle(groupPlayers.map(p => p.id));
                 assignment[all[0]] = '円AoE'; assignment[all[1]] = '円AoE';
                 assignment[all[2]] = '扇AoE'; assignment[all[3]] = '扇AoE';
             }
@@ -2060,9 +2049,9 @@
                 const group = getTowerGroupByHit(hit);
                 const ordinal = getGroupHitOrdinal(group, hit);
                 const groupPlayers = getPlayersByGroup(group);
-                // 後組 ordinal 1（塔4）: 開始時に付与された初期デバフをそのまま使用
-                // 後組は塔担当が初めてなので、持ち込むデバフ = assignTowerGroups で設定した initialMechanic
-                if (group === '後組' && ordinal === 1) {
+                // ordinal 1: 開始時に付与された初期デバフをそのまま使用
+                // 先組 hit1: Missing直後の初期デバフ / 後組 hit4: 初期デバフ持ち込み
+                if (ordinal === 1) {
                     const assignment = {};
                     groupPlayers.forEach(p => { assignment[p.id] = p.initialMechanic; });
                     towerDebuffAssignments[group][ordinal] = assignment;
