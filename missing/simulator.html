@@ -636,9 +636,28 @@
                     if (side !== undefined) return `active_${side === 'LEFT' ? 'TH' : 'DPS'}_${oddMec}`;
                 }
                 // KTヤーン (fallback):
-                // 頭割り → ロール別 (TH=左頭, DPS=右頭)
+                // 頭割り → 優先度比較で左右決定 (ヒーラー>タンク>近接>遠隔)
                 // AoE → タイプ別 (扇=左塔下, 円=右塔下) ← ロール不問
-                if (oddMec === '頭割り') return `${status}_${roleType}_頭割り`;
+                if (oddMec === '頭割り') {
+                    const headPrio = (p) => {
+                        const r = getActiveRole(p);
+                        if (r === 'HEALER') return 4;
+                        if (r === 'TANK')   return 3;
+                        if (r === 'MELEE')  return 2;
+                        return 1;
+                    };
+                    const otherHead = players.find(p =>
+                        p.id !== player.id &&
+                        p.debuff.group === activeGroup &&
+                        p.debuff.mechanic === '頭割り'
+                    );
+                    const myPrio    = headPrio(player);
+                    const otherPrio = otherHead ? headPrio(otherHead) : 0;
+                    const myIdx     = players.findIndex(p => p.id === player.id);
+                    const otherIdx  = otherHead ? players.findIndex(p => p.id === otherHead.id) : Infinity;
+                    const goLeft    = myPrio > otherPrio || (myPrio === otherPrio && myIdx < otherIdx);
+                    return `${status}_${goLeft ? 'TH' : 'DPS'}_頭割り`;
+                }
                 return oddMec === '扇AoE' ? `${status}_TH_扇AoE` : `${status}_DPS_円AoE`;
             }
             // 非アクティブ 奇数: 全員ロールで位置決定
