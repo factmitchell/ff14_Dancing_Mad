@@ -346,35 +346,29 @@ function raidwide(phase, label, instr){
     };
 }
 function observeBeat(i){
+    const angle = g.dashAngles[i];
     return {
-        phase:'観察', label:`観察 ${i+1} / 8`, evaluate:false, telegraphMs:760,
-        instr:'突進の出現位置と順番を記憶',
+        phase:'観察', label:`観察 ${i+1} / 8`, evaluate:false, telegraphMs:1000,
+        instr:'突進がどこから出て、どこへ抜けるかを記憶',
         onTelegraphStart:()=>{ g.observeRevealed = i+1; },
-        draw:(alpha)=>{}, // 観察マーカーは drawObserveMarkers でまとめて描画
+        draw:(alpha)=>{
+            // alpha(0→1) を「伸びの進捗」に使い、出現側→反対側へ突進が走る
+            drawDashBand(angle, alpha, alpha);
+            drawDashOrigin(angle, i + 1, 1);
+        },
         isSafe:()=>true,
     };
 }
 function dashBeat(i, order){
     const angle = g.dashAngles[i];
-    const W = 40;
     return {
         phase:'誘導', label:`誘導 突進 ${order} / 8`, evaluate:true,
         instr:'逆順の突進。直線レーザーから離れて回避',
         telegraphMs:1500,
         dashIndex:i,
-        draw:(alpha)=>{
-            ctx.save();
-            ctx.translate(C,C);
-            ctx.rotate(angle * Math.PI/180);
-            const grd = ctx.createLinearGradient(0,-R,0,R);
-            grd.addColorStop(0,`rgba(255,70,70,${0.05+0.30*alpha})`);
-            grd.addColorStop(0.5,`rgba(255,140,60,${0.18+0.40*alpha})`);
-            grd.addColorStop(1,`rgba(255,70,70,${0.05+0.30*alpha})`);
-            ctx.fillStyle = grd;
-            ctx.fillRect(-W, -R-20, W*2, (R+20)*2);
-            ctx.restore();
-        },
-        isSafe:(p)=> lineDist(p, angle) > W + PLAYER_R - 4,
+        // 誘導では最初から全長を表示し、濃さ(alpha)だけ上げて着弾予兆にする
+        draw:(alpha)=> drawDashBand(angle, alpha, 1),
+        isSafe:(p)=> lineDist(p, angle) > DASH_W + PLAYER_R - 4,
         recommend:()=>{
             const r = (angle+90) * Math.PI/180;
             return { x: C + Math.sin(r)*200, y: C - Math.cos(r)*200 };
@@ -385,6 +379,42 @@ function dashBeat(i, order){
 /* ───────────────────────────── 描画 ───────────────────────────── */
 function fillCircle(x,y,r,c){ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
 function strokeCircle(x,y,r,c,w){ ctx.strokeStyle=c; ctx.lineWidth=w; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke(); }
+
+const DASH_W = 40; // 突進の半幅（長方形の横幅は DASH_W*2）
+
+/* 突進の長方形エフェクトを描く
+   angle : 出現する角度（θ）。θ側の端 → 中央 → θ+180側の端 へ伸びる
+   alpha : 色の濃さ（0=薄い 〜 1=濃い）
+   extend: 伸びの進捗（0=まだ出現側だけ 〜 1=反対側まで到達） */
+function drawDashBand(angle, alpha, extend){
+    const fullLen = (R + 20) * 2;             // 出現端から反対端までの全長
+    const len = fullLen * Math.min(1, Math.max(0, extend));
+    ctx.save();
+    ctx.translate(C, C);
+    ctx.rotate(angle * Math.PI / 180);        // ローカル: y=-R が出現側, y=+R が反対側
+    const grd = ctx.createLinearGradient(0, -R, 0, R);
+    grd.addColorStop(0,   `rgba(255,70,70,${0.05+0.30*alpha})`);
+    grd.addColorStop(0.5, `rgba(255,140,60,${0.18+0.45*alpha})`);
+    grd.addColorStop(1,   `rgba(255,70,70,${0.05+0.30*alpha})`);
+    ctx.fillStyle = grd;
+    ctx.fillRect(-DASH_W, -R - 20, DASH_W * 2, len); // 出現端(-R-20)から下方向へ len 伸ばす
+    ctx.restore();
+}
+
+/* 突進の「出現位置」＋「順番」のバッジを描く */
+function drawDashOrigin(angle, num, op){
+    const o = pointAt(angle, R - 18);
+    ctx.save();
+    ctx.globalAlpha = op;
+    fillCircle(o.x, o.y, 16, 'rgba(255,150,60,0.92)');
+    strokeCircle(o.x, o.y, 16, '#fff', 2);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(num), o.x, o.y);
+    ctx.restore();
+}
 
 function drawArena(){
     ctx.clearRect(0,0,BASE,BASE);
@@ -426,19 +456,11 @@ function drawFieldMarkers(){
     });
 }
 
-function drawObserveMarkers(showAll){
-    const n = showAll ? 8 : g.observeRevealed;
-    for(let i=0;i<n;i++){
-        const a = g.dashAngles[i];
-        const edge = pointAt(a, R-18);
-        ctx.save();
-        ctx.globalAlpha = showAll ? 0.4 : 1;
-        fillCircle(edge.x, edge.y, 16, 'rgba(255,150,60,0.85)');
-        strokeCircle(edge.x, edge.y, 16, '#fff', 2);
-        ctx.fillStyle='#fff'; ctx.font='bold 16px Arial';
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(String(i+1), edge.x, edge.y);
-        ctx.restore();
+/* 誘導中の補助表示：8本の突進を薄く全部表示（出現順の番号付き） */
+function drawAllDashesFaint(){
+    for(let i=0;i<8;i++){
+        drawDashBand(g.dashAngles[i], 0.22, 1);
+        drawDashOrigin(g.dashAngles[i], i+1, 0.45);
     }
 }
 
@@ -529,13 +551,11 @@ function tick(now){
     // 描画
     drawArena();
 
-    // 観察マーカー
+    // 誘導フェーズで「観察マーカーを残す」がONなら、全突進を薄く表示
     if(curBeat){
-        const keep = document.getElementById('chk-keepmark').checked;
-        if(curBeat.label.includes('観察') || curBeat.label.includes('突進フォーム')){
-            drawObserveMarkers(false);
-        } else if(keep){
-            drawObserveMarkers(true);
+        const isObserve = curBeat.label.includes('観察') || curBeat.label.includes('突進フォーム');
+        if(!isObserve && document.getElementById('chk-keepmark').checked){
+            drawAllDashesFaint();
         }
     }
 
