@@ -322,10 +322,13 @@ function generateBeats(){
         beats.push(observeBeat(i));
     }
     beats.push(raidwide('誘導', '誘導フェーズ開始', '同じ位置が【逆順】で実際に来る。回避準備'));
-    // 誘導：逆順で発射
-    for(let i=7;i>=0;i--){
-        beats.push(dashBeat(i, 7 - i + 1));
-    }
+    // 誘導：1番目は観察1番目(a0)と同位置 → 以降は観察と逆回り(a7,a6,…,a1)
+    // 出現順インデックス = [0, 7, 6, 5, 4, 3, 2, 1]
+    const guideOrder = [0];
+    for(let i=7;i>=1;i--) guideOrder.push(i);
+    guideOrder.forEach((idx, k)=>{
+        beats.push(dashBeat(idx, k + 1));
+    });
 
     // 締め：サンダガ強×2
     beats.push(raidwide('誘導', 'サンダガ 強 ×2', '散開後の連続全体攻撃。軽減で対応'));
