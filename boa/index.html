@@ -225,7 +225,7 @@
 <div id="legend">
     <b>遊び方</b>：自分のロールを選んで START。<b>白いリングの自キャラをドラッグ</b>して操作します（練習なので即死せず最後まで進行）。<br>
     <b>観察フェーズ</b>：8本の突進が「θ→中央→θ+180」で1本ずつ伸びる。出現位置と<b>順番</b>を覚える。<br>
-    <b>誘導フェーズ</b>：頭上に<span class="swatch" style="background:#39d353"></span><b>誘導番号(1〜8)</b>が付く。突進は観察の逆順で「origin→中央→<b>その番号の待機位置</b>」へ曲がって伸びる（風車散開）。自分の番号の突進が来るまでに、<span class="swatch" style="background:#39d353"></span>緑の待機位置（自分の番号）へ移動して誘導する。位置がズレていると「被弾（失敗）」。<br>
+    <b>誘導フェーズ</b>：頭上に<span class="swatch" style="background:#39d353"></span><b>誘導番号(1〜8)</b>が付く。突進は観察の逆順で、出現位置から<b>その番号の待機位置</b>へ直線で伸びる。自分の番号の突進が来るまでに、<span class="swatch" style="background:#39d353"></span>緑の待機位置（自分の番号）へ移動して誘導する。位置がズレていると「被弾（失敗）」。<br>
     ※ ギミック解釈は <a href="https://drippy-sokuhou.com/articles/kefka-p3-front" target="_blank" rel="noopener">drippy-sokuhou（P3前半 TLB3式）</a> を参考にした簡略再現です。
 </div>
 
@@ -396,8 +396,8 @@ function dashBeat(originAngle, order){
             : `突進 ${order} / 8（あなたは番号 ${g.guideNumber}）`,
         telegraphMs:1400,
         originAngle, order, isMine,
-        // origin → 中央 → 番号の待機位置 へ曲がって伸びる（風車）
-        draw:(alpha)=> drawBentDash(originAngle, spotForNumber(order), alpha, alpha, isMine),
+        // 出現位置 → 番号の待機位置 へ直線で伸びる
+        draw:(alpha)=> drawGuideDash(originAngle, spotForNumber(order), alpha, alpha, isMine),
         // 自分の突進時、待機位置にいれば正解（＝うまく誘導できた）
         isSafe:(p)=> dist(p, spotForNumber(order)) <= STAND_TOL,
     };
@@ -483,14 +483,13 @@ function drawFieldMarkers(){
     });
 }
 
-/* 誘導の突進: origin → 中央 → target へ曲がって伸びる（風車）
-   extend で「出現端→中央→target」の伸び進捗を表現 */
-function drawBentDash(originAngle, target, alpha, extend, bright){
+/* 誘導の突進: 出現位置(origin) → 番号の待機位置(target) へ直線で伸びる
+   extend で origin→target の伸び進捗を表現 */
+function drawGuideDash(originAngle, target, alpha, extend, bright){
     const origin = pointAt(originAngle, R + 20);
-    const seg1 = Math.hypot(C - origin.x, C - origin.y);          // origin→中央
-    const seg2 = Math.hypot(target.x - C, target.y - C);         // 中央→target
-    const total = seg1 + seg2;
-    const cur = total * Math.min(1, Math.max(0, extend));
+    const t = Math.min(1, Math.max(0, extend));
+    const ex = origin.x + (target.x - origin.x) * t;
+    const ey = origin.y + (target.y - origin.y) * t;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -500,14 +499,7 @@ function drawBentDash(originAngle, target, alpha, extend, bright){
         : `rgba(255,90,60,${0.12+0.30*alpha})`;
     ctx.beginPath();
     ctx.moveTo(origin.x, origin.y);
-    if(cur <= seg1){
-        const t = seg1 > 0 ? cur / seg1 : 1;
-        ctx.lineTo(origin.x + (C - origin.x) * t, origin.y + (C - origin.y) * t);
-    } else {
-        ctx.lineTo(C, C);
-        const t = seg2 > 0 ? (cur - seg1) / seg2 : 1;
-        ctx.lineTo(C + (target.x - C) * t, C + (target.y - C) * t);
-    }
+    ctx.lineTo(ex, ey);
     ctx.stroke();
     ctx.restore();
 }
