@@ -349,10 +349,8 @@ function generateBeats(){
         beats.push(observeBeat(i));
     }
     beats.push(raidwide('誘導', '誘導フェーズ開始', `あなたの誘導番号は【${g.guideNumber}】。番号の待機位置へ！`));
-    // 誘導：突進 k は番号(k+1)のプレイヤー待機位置へ曲がって伸びる
-    g.guideOrigins.forEach((originAngle, k)=>{
-        beats.push(dashBeat(originAngle, k + 1));
-    });
+    // 誘導：8本の突進を一斉に描画・判定
+    beats.push(guidanceDashBeat());
 
     // 締め：サンダガ強×2
     beats.push(raidwide('誘導', 'サンダガ 強 ×2', '散開後の連続全体攻撃。軽減で対応'));
@@ -386,20 +384,21 @@ function observeBeat(i){
         isSafe:()=>true,
     };
 }
-function dashBeat(originAngle, order){
-    const isMine = (order === g.guideNumber);
+function guidanceDashBeat(){
     return {
-        phase:'誘導', label:`誘導 突進 ${order} / 8`,
-        evaluate: isMine,                 // 評価するのは自分の番号の突進のみ
-        instr: isMine
-            ? `★あなたの番号【${order}】の突進！指定の待機位置で誘導`
-            : `突進 ${order} / 8（あなたは番号 ${g.guideNumber}）`,
-        telegraphMs:1400,
-        originAngle, order, isMine,
-        // 出現位置 → 番号の待機位置 へ直線で伸びる
-        draw:(alpha)=> drawGuideDash(originAngle, spotForNumber(order), alpha, alpha, isMine),
-        // 自分の突進時、待機位置にいれば正解（＝うまく誘導できた）
-        isSafe:(p)=> dist(p, spotForNumber(order)) <= STAND_TOL,
+        phase:'誘導', label:'突進（8本同時）',
+        evaluate:true,
+        instr:`★8本同時に突進！あなたの番号【${g.guideNumber}】の待機位置で誘導`,
+        telegraphMs:2000,
+        // 8本の突進を一斉に描画（自分の番号は明るく）
+        draw:(alpha)=>{
+            for(let n=1;n<=8;n++){
+                const isMine = (n === g.guideNumber);
+                drawGuideDash(g.guideOrigins[n-1], spotForNumber(n), alpha, alpha, isMine);
+            }
+        },
+        // 自分の番号の待機位置にいれば正解
+        isSafe:(p)=> dist(p, spotForNumber(g.guideNumber)) <= STAND_TOL,
     };
 }
 
