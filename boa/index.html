@@ -227,20 +227,8 @@ function applyCanvasSize(size){
     document.getElementById('overlay').style.borderRadius = '50%';
 }
 
-/* ───────────────────────────── ロール／プレイヤー ───────────────────────────── */
-function roleGroup(r){
-    if(r==='MT'||r==='ST') return 'TANK';
-    if(r==='H1'||r==='H2') return 'HEALER';
-    return 'DPS';
-}
-const groupColor = { TANK:'#4169e1', HEALER:'#32cd32', DPS:'#dc143c' };
-
-const roleIcons = { TANK:new Image(), HEALER:new Image(), DPS:new Image() };
-roleIcons.TANK.src   = '../asset/FFXIVIcons JobIcons/00_ROLE/TankRole.png';
-roleIcons.HEALER.src = '../asset/FFXIVIcons JobIcons/00_ROLE/HealerRole.png';
-roleIcons.DPS.src    = '../asset/FFXIVIcons JobIcons/00_ROLE/DPSRole.png';
-
-let myRole = 'MT';
+/* ───────────────────────────── プレイヤー ───────────────────────────── */
+const PLAYER_COLOR = '#00e5ff';
 const player = { x: C, y: C + 150 };
 
 /* ───────────────────────────── 幾何ヘルパー ───────────────────────────── */
@@ -511,17 +499,11 @@ function drawAllDashesFaint(){
 }
 
 function drawPlayer(hitFlash){
-    const grp = roleGroup(myRole);
-    const col = hitFlash ? '#ff3030' : '#ffffff';
+    const ringCol = hitFlash ? '#ff3030' : PLAYER_COLOR;
     fillCircle(player.x, player.y, PLAYER_R+2, 'rgba(0,0,0,0.65)');
-    strokeCircle(player.x, player.y, PLAYER_R+2, groupColor[grp], 4);
-    strokeCircle(player.x, player.y, PLAYER_R+2, col, 1.8);
-    const icon = roleIcons[grp];
-    if(icon.complete && icon.naturalWidth){
-        ctx.drawImage(icon, player.x-13, player.y-13, 26, 26);
-    } else {
-        fillCircle(player.x, player.y, 9, groupColor[grp]);
-    }
+    strokeCircle(player.x, player.y, PLAYER_R+2, ringCol, 4);
+    strokeCircle(player.x, player.y, PLAYER_R+2, '#ffffff', 1.8);
+    fillCircle(player.x, player.y, 5, ringCol);
     // ラベル
     ctx.fillStyle='rgba(0,0,0,0.65)';
     ctx.fillRect(player.x-16, player.y+PLAYER_R+2, 32, 15);
