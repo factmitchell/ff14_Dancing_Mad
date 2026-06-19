@@ -584,10 +584,19 @@ let running = false;
 
 const RESOLVE_MS = 480, GAP_MS = 320;
 
+// 誘導番号を表示してよいタイミングか
+// （観測の6本目完了後 = 7本目以降、または誘導フェーズ）
+function guideNumberVisible(){
+    return !!g.guideNumber && !!curBeat && (
+        curBeat.phase === '誘導' ||
+        (curBeat.phase === '観察' && g.observeRevealed >= 7)
+    );
+}
+
 function setHUD(){
     document.getElementById('phaseLabel').textContent = curBeat ? curBeat.phase : '―';
     document.getElementById('roleLabel').textContent = myRole;
-    document.getElementById('guideNumLabel').textContent = g.guideNumber ? g.guideNumber : '―';
+    document.getElementById('guideNumLabel').textContent = guideNumberVisible() ? g.guideNumber : '―';
     document.getElementById('hitLabel').textContent = `${hitCount} / ${evalCount}`;
     document.getElementById('instr').textContent =
         curBeat ? (curBeat.instr || curBeat.label) : '―';
@@ -688,8 +697,8 @@ function tick(now){
     // プレイヤー
     if(state !== 'idle'){
         drawPlayer(hitFlash);
-        // 誘導中は頭上に自分の誘導番号を表示
-        if(curBeat && curBeat.phase === '誘導' && g.guideNumber){
+        // 観測6本目完了後・誘導中は頭上に自分の誘導番号を表示
+        if(guideNumberVisible()){
             drawGuideNumberBadge(player.x, player.y - PLAYER_R - 16, g.guideNumber);
         }
     }
