@@ -199,7 +199,7 @@
 
 <div id="legend">
     <b>遊び方</b>：START → 観察で突進の順番を覚え、自分の誘導番号の正解位置を<b>クリックで選択</b>。<b>1回目クリックで仮選択（黄）、同じ位置を2回目クリックで確定</b>。<br>
-    <b>観察フェーズ</b>：8本の突進が「θ→中央→θ+180」で1本ずつ伸びる。出現位置と<b>順番</b>を覚える。突進6本目の後、頭上に<span class="swatch" style="background:#39d353"></span><b>誘導番号(1〜8)</b>が付き、<b>番号なしの空白○</b>の待機位置が表示されてクリック可能になる。<br>
+    <b>観察フェーズ</b>：8本の突進が「θ→中央→θ+180」で1本ずつ伸びる。出現位置と<b>順番</b>を覚える。突進2本目で回転方向が確定するため、<b>2本目以降</b>に頭上へ<span class="swatch" style="background:#39d353"></span><b>誘導番号(1〜8)</b>が付き、<b>番号なしの空白○</b>の待機位置が表示されてクリック可能になる。<br>
     <b>確定すると即誘導フェーズへ</b>（残りの観察はスキップ）。突進が観察の逆順で各待機位置へ直線で伸び、自分の番号の位置を正しく選べていれば<b>成功</b>、違う番号の位置なら<b>失敗</b>。<br>
     ※ ギミック解釈は <a href="https://drippy-sokuhou.com/articles/kefka-p3-front" target="_blank" rel="noopener">drippy-sokuhou（P3前半 TLB3式）</a> を参考にした簡略再現です。
 </div>
@@ -525,11 +525,11 @@ let running = false;
 const RESOLVE_MS = 480, GAP_MS = 320;
 
 // 誘導番号を表示してよいタイミングか
-// （観測の6本目完了後 = 7本目以降、または誘導フェーズ）
+// （観測の2本目以降は回転方向が確定し安置を割り出せる、または誘導フェーズ）
 function guideNumberVisible(){
     return !!g.guideNumber && !!curBeat && (
         curBeat.phase === '誘導' ||
-        (curBeat.phase === '観察' && g.observeRevealed >= 7)
+        (curBeat.phase === '観察' && g.observeRevealed >= 2)
     );
 }
 
