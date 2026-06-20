@@ -167,7 +167,7 @@
 <div id="hud">
     <div class="hud-box"><span class="k">フェーズ</span><span class="v" id="phaseLabel">―</span></div>
     <div class="hud-box"><span class="k">誘導番号</span><span class="v" id="guideNumLabel" style="color:#39d353">―</span></div>
-    <div class="hud-box"><span class="k">被弾</span><span class="v" id="hitLabel">0 / 0</span></div>
+    <div class="hud-box"><span class="k">結果</span><span class="v" id="resultLabel">―</span></div>
 </div>
 
 <div id="instr">「START」を押してください</div>
@@ -177,7 +177,7 @@
     <canvas id="field" width="600" height="600"></canvas>
     <div id="overlay">
         <div class="big" id="ovTitle">START</div>
-        <div class="sub" id="ovSub">自キャラ（リング表示）をドラッグして突進レーザーを回避しよう。</div>
+        <div class="sub" id="ovSub">観察で突進の順番を覚え、誘導では自分の誘導番号の正解位置をクリックで選ぼう。</div>
         <button id="ovBtn">START</button>
     </div>
 </div>
@@ -191,16 +191,16 @@
             <option value="ccw">半時計回り</option>
         </select>
     </label>
-    <label><input type="checkbox" id="chk-recommend" checked> 推奨位置を表示</label>
+    <label><input type="checkbox" id="chk-recommend"> 正解位置のヒント</label>
     <label><input type="checkbox" id="chk-keepmark"> 観察マーカーを残す</label>
     <label>速度 <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1"><span id="speedLabel">1.0x</span></label>
     <label>サイズ <input type="range" id="size" min="420" max="820" step="20" value="600"></label>
 </div>
 
 <div id="legend">
-    <b>遊び方</b>：自分のロールを選んで START。<b>白いリングの自キャラをドラッグ</b>して操作します（練習なので即死せず最後まで進行）。<br>
-    <b>観察フェーズ</b>：8本の突進が「θ→中央→θ+180」で1本ずつ伸びる。出現位置と<b>順番</b>を覚える。<br>
-    <b>誘導フェーズ</b>：頭上に<span class="swatch" style="background:#39d353"></span><b>誘導番号(1〜8)</b>が付く。突進は観察の逆順で、出現位置から<b>その番号の待機位置</b>へ直線で伸びる。自分の番号の突進が来るまでに、<span class="swatch" style="background:#39d353"></span>緑の待機位置（自分の番号）へ移動して誘導する。位置がズレていると「被弾（失敗）」。<br>
+    <b>遊び方</b>：START → 観察で突進の順番を覚え、自分の誘導番号の正解位置を<b>クリックで選択</b>。<b>1回目クリックで仮選択（黄）、同じ位置を2回目クリックで確定</b>。<br>
+    <b>観察フェーズ</b>：8本の突進が「θ→中央→θ+180」で1本ずつ伸びる。出現位置と<b>順番</b>を覚える。突進6本目の後、頭上に<span class="swatch" style="background:#39d353"></span><b>誘導番号(1〜8)</b>が付き、<b>番号なしの空白○</b>の待機位置が表示されてクリック可能になる。<br>
+    <b>確定すると即誘導フェーズへ</b>（残りの観察はスキップ）。突進が観察の逆順で各待機位置へ直線で伸び、自分の番号の位置を正しく選べていれば<b>成功</b>、違う番号の位置なら<b>失敗</b>。<br>
     ※ ギミック解釈は <a href="https://drippy-sokuhou.com/articles/kefka-p3-front" target="_blank" rel="noopener">drippy-sokuhou（P3前半 TLB3式）</a> を参考にした簡略再現です。
 </div>
 
@@ -275,6 +275,9 @@ const g = {
     guideOrigins: [],       // 誘導の出現角度（出現順 = 番号1〜8）
     baitOffset: 157.5,      // 待機位置のオフセット（origin から見た角度）
     guideNumber: null,      // 自分の誘導番号（1〜8）
+    selectedNumber: null,   // クリックで仮選択した待機位置の番号
+    confirmed: false,       // 2回クリックで確定したか
+    result: null,           // 'success' | 'fail'
 };
 
 /* 誘導番号 n のプレイヤーが立つべき待機位置（風車の歯先） */
@@ -349,9 +352,9 @@ function observeBeat(i){
 }
 function guidanceDashBeat(){
     return {
-        phase:'誘導', label:'突進（8本同時）',
+        phase:'誘導', label:'突進（8本同時）', isGuidanceDash:true,
         evaluate:true,
-        instr:`★8本同時に突進！あなたの番号【${g.guideNumber}】の待機位置で誘導`,
+        instr:`★8本同時に突進！あなたの番号【${g.guideNumber}】の正解位置を選択`,
         telegraphMs:2000,
         // 8本の突進を一斉に描画（自分の番号は明るく）
         draw:(alpha)=>{
@@ -360,8 +363,14 @@ function guidanceDashBeat(){
                 drawGuideDash(g.guideOrigins[n-1], spotForNumber(n), alpha, alpha, isMine);
             }
         },
-        // 自分の番号の待機位置にいれば正解
-        isSafe:(p)=> dist(p, spotForNumber(g.guideNumber)) <= STAND_TOL,
+        // 確定していなければ現在の仮選択で確定し、結果を判定
+        isSafe:()=>{
+            if(!g.confirmed){
+                g.confirmed = true;
+                g.result = (g.selectedNumber === g.guideNumber) ? 'success' : 'fail';
+            }
+            return g.result === 'success';
+        },
     };
 }
 
@@ -420,9 +429,6 @@ function drawArena(){
     ctx.beginPath(); ctx.moveTo(C-R,C); ctx.lineTo(C+R,C); ctx.stroke();
     // フィールドマーカー（プレイヤー・予兆より下）
     drawFieldMarkers();
-    // 中央ボス（ケフカ）
-    fillCircle(C,C,18,'rgba(120,40,160,0.55)');
-    strokeCircle(C,C,18,'rgba(200,120,240,0.8)',2);
 }
 
 function drawFieldMarkers(){
@@ -466,28 +472,22 @@ function drawGuideDash(originAngle, target, alpha, extend, bright){
     ctx.restore();
 }
 
-/* 誘導フェーズ: 8つの待機位置を番号付きで表示（自分の番号は緑で強調） */
+/* 8つの待機位置を「番号なしの空白○」で表示（クリックで選択） */
 function drawGuideSpots(){
     for(let n=1;n<=8;n++){
         const sp = spotForNumber(n);
-        const mine = (n === g.guideNumber);
-        ctx.save();
-        if(mine){
-            fillCircle(sp.x, sp.y, 16, 'rgba(57,211,83,0.28)');
-            strokeCircle(sp.x, sp.y, PLAYER_R + 8, '#39d353', 3);
-        } else {
-            ctx.globalAlpha = 0.55;
-            fillCircle(sp.x, sp.y, 13, 'rgba(255,215,0,0.15)');
-            strokeCircle(sp.x, sp.y, 13, 'rgba(255,215,0,0.7)', 1.5);
-        }
-        ctx.globalAlpha = mine ? 1 : 0.8;
-        ctx.fillStyle = mine ? '#39d353' : '#ffd700';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(n), sp.x, sp.y);
-        ctx.restore();
+        fillCircle(sp.x, sp.y, 15, 'rgba(255,255,255,0.05)');
+        strokeCircle(sp.x, sp.y, 15, 'rgba(255,255,255,0.55)', 2);
     }
+}
+
+/* 選択中の待機位置マーカー（仮選択=黄 / 確定=シアン） */
+function drawSelection(){
+    if(!g.selectedNumber) return;
+    const sp = spotForNumber(g.selectedNumber);
+    const col = g.confirmed ? '#00e5ff' : '#ffd700';
+    strokeCircle(sp.x, sp.y, 17, col, 3);
+    fillCircle(sp.x, sp.y, 6, col);
 }
 
 /* 誘導中の補助表示：観察の8本(直線)を薄く全部表示（出現順の番号付き） */
@@ -519,7 +519,6 @@ let state = 'idle';        // idle | telegraph | resolve | gap | done
 let stateStart = 0;
 let curBeat = null;
 let speed = 1;
-let hitCount = 0, evalCount = 0;
 let lastResultSafe = true;
 let running = false;
 
@@ -537,7 +536,9 @@ function guideNumberVisible(){
 function setHUD(){
     document.getElementById('phaseLabel').textContent = curBeat ? curBeat.phase : '―';
     document.getElementById('guideNumLabel').textContent = guideNumberVisible() ? g.guideNumber : '―';
-    document.getElementById('hitLabel').textContent = `${hitCount} / ${evalCount}`;
+    const resEl = document.getElementById('resultLabel');
+    resEl.textContent = g.result === 'success' ? '成功' : g.result === 'fail' ? '失敗' : '―';
+    resEl.style.color = g.result === 'success' ? '#39d353' : g.result === 'fail' ? '#ff4444' : '#fff';
     document.getElementById('instr').textContent =
         curBeat ? (curBeat.instr || curBeat.label) : '―';
 }
@@ -545,8 +546,10 @@ function setHUD(){
 function startRun(){
     beats = generateBeats();
     beatIndex = -1;
-    hitCount = 0; evalCount = 0;
-    player.x = C; player.y = C + 150;
+    g.selectedNumber = null;
+    g.confirmed = false;
+    g.result = null;
+    player.x = C; player.y = C;   // プレイヤーは中央固定
     running = true;
     nextBeat();
     hideOverlay();
@@ -566,8 +569,13 @@ function finishRun(){
     running = false;
     state = 'done';
     curBeat = null;
-    const safe = evalCount - hitCount;
-    showOverlay('クリア！', `回避成功 ${safe} / ${evalCount}　（被弾 ${hitCount}）`, 'もう一度');
+    const ok = g.result === 'success';
+    showOverlay(
+        ok ? '成功！' : '失敗…',
+        ok ? '正しい誘導番号の位置を選べました'
+           : `誘導番号 ${g.guideNumber} の位置とズレています`,
+        'もう一度'
+    );
 }
 
 function tick(now){
@@ -583,9 +591,15 @@ function tick(now){
             drawAllDashesFaint();
         }
     }
-    // 誘導フェーズ: 待機位置（番号）を表示（推奨位置表示ON時）
-    if(curBeat && curBeat.phase === '誘導' && document.getElementById('chk-recommend').checked){
+    // 番号表示中（観察6本目以降〜誘導）: 待機位置を空白○で表示＋選択マーカー
+    if(guideNumberVisible()){
         drawGuideSpots();
+        drawSelection();
+        // ヒントONなら正解位置を緑で示す（難易度を下げる）
+        if(document.getElementById('chk-recommend').checked){
+            const correct = spotForNumber(g.guideNumber);
+            strokeCircle(correct.x, correct.y, 17, 'rgba(57,211,83,0.9)', 3);
+        }
     }
 
     let hitFlash = false;
@@ -602,8 +616,6 @@ function tick(now){
                 // 解決
                 if(curBeat.evaluate){
                     lastResultSafe = curBeat.isSafe(player);
-                    evalCount++;
-                    if(!lastResultSafe) hitCount++;
                     setHUD();
                 }
                 state = 'resolve';
@@ -620,6 +632,11 @@ function tick(now){
                     : `rgba(255,40,40,${0.30*flashA})`;
                 ctx.beginPath(); ctx.arc(C,C,R,0,Math.PI*2); ctx.fill();
                 hitFlash = !lastResultSafe && flashA > 0.3;
+                // 正解位置を開示（クリックが合っていたか確認用）
+                if(curBeat.phase === '誘導'){
+                    const correct = spotForNumber(g.guideNumber);
+                    strokeCircle(correct.x, correct.y, 17, '#39d353', 4);
+                }
             }
             setTimerbar(0);
             if(elapsed >= RESOLVE_MS){
@@ -660,36 +677,53 @@ function setTimerbar(remainFrac){
     document.getElementById('timerbar').style.width = Math.max(0,Math.min(1,remainFrac))*100 + '%';
 }
 
-/* ───────────────────────────── 入力（ドラッグ） ───────────────────────────── */
-let dragging = false;
+/* ───────────────────────────── 入力（クリックで位置選択） ───────────────────────────── */
 function toBase(evt){
     const rect = canvas.getBoundingClientRect();
     const k = cssSize / BASE;
     return { x: (evt.clientX - rect.left)/k, y: (evt.clientY - rect.top)/k };
 }
-canvas.addEventListener('mousedown', e=>{
-    if(state==='idle' || state==='done') return;
-    const p = toBase(e);
-    if(dist(p, player) < PLAYER_R + 14) dragging = true;
-});
-window.addEventListener('mousemove', e=>{
-    if(!dragging) return;
-    const p = toBase(e);
-    player.x = p.x; player.y = p.y;
-    clampToArena(player);
-});
-window.addEventListener('mouseup', ()=>{ dragging = false; });
+// 待機位置のクリック選択（1回目=仮選択(黄) / 同じ位置を2回目=確定）
+function handleSelectClick(clientX, clientY){
+    if(!running) return;
+    if(!guideNumberVisible()) return;   // 番号表示中のみ選択可
+    if(g.confirmed) return;             // 確定後は不可
+    const p = toBase({ clientX, clientY });
+    let nearest = null, min = Infinity;
+    for(let n=1;n<=8;n++){
+        const d = dist(p, spotForNumber(n));
+        if(d < min){ min = d; nearest = n; }
+    }
+    if(nearest === null || min > 55) return;  // 円から離れすぎは無視
+    if(g.selectedNumber === nearest){
+        confirmSelection();             // 2回目: 確定
+    } else {
+        g.selectedNumber = nearest;     // 1回目: 仮選択(黄)
+    }
+}
+
+// 確定: 結果を判定し、観察中なら即誘導フェーズへ
+function confirmSelection(){
+    if(g.confirmed) return;
+    g.confirmed = true;
+    g.result = (g.selectedNumber === g.guideNumber) ? 'success' : 'fail';
+    setHUD();
+    if(!curBeat || !curBeat.isGuidanceDash){
+        jumpToGuidance();
+    }
+}
+
+function jumpToGuidance(){
+    const idx = beats.findIndex(b => b.isGuidanceDash);
+    if(idx < 0) return;
+    beatIndex = idx - 1;
+    nextBeat();
+}
+
+canvas.addEventListener('mousedown', e=> handleSelectClick(e.clientX, e.clientY));
 canvas.addEventListener('touchstart', e=>{
-    if(state==='idle' || state==='done') return;
-    const t=e.touches[0]; const p=toBase(t);
-    if(dist(p, player) < PLAYER_R + 20) dragging = true;
+    if(e.touches.length){ const t=e.touches[0]; handleSelectClick(t.clientX, t.clientY); }
 }, {passive:true});
-canvas.addEventListener('touchmove', e=>{
-    if(!dragging) return;
-    const t=e.touches[0]; const p=toBase(t);
-    player.x=p.x; player.y=p.y; clampToArena(player);
-}, {passive:true});
-canvas.addEventListener('touchend', ()=>{ dragging=false; });
 
 /* ───────────────────────────── オーバーレイ ───────────────────────────── */
 const overlay = document.getElementById('overlay');
